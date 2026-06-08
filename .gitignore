@@ -1,0 +1,18 @@
+# Ignorer les dossiers de build et de dépendances
+**/target/
+**/.gradle/
+**/build/
+**/.dart_tool/
+**/.packages
+
+# Ignorer les fichiers d'upload locaux du backend
+backend/dsi/uploads/
+
+# Ignorer les fichiers système et d'IDEs locaux
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

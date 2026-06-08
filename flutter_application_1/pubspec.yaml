@@ -1,0 +1,33 @@
+name: flutter_application_1
+description: Application Flutter DSI Connect
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.3
+  file_picker: ^8.0.0
+  url_launcher: ^6.3.2
+  bloc_concurrency: ^0.2.5
+  dio: ^5.4.0
+  flutter_bloc: ^8.1.5
+  equatable: ^2.0.5
+  
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
