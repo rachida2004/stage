@@ -52,7 +52,7 @@ class SL {
 SL get sl => SL.instance;
 
 // ════════════════════════════════════════════════════════════════════
-// INVITATION SERVICE
+// INVITATION SERVICE (MIS À JOUR)
 // ════════════════════════════════════════════════════════════════════
 
 class InvitationService {
@@ -82,20 +82,22 @@ class InvitationService {
     try {
       final Map<String, dynamic> payload = {};
 
-      // 1. On met à plat les paramètres simples requis par les @RequestParam de Java
-      payload['objet'] = data['objet'] ?? '';
-      
-      // Attention : assure-toi que ces chaînes respectent le format 'YYYY-MM-DD'
-      payload['dateDebut'] = data['dateDebut'] ?? '';
-      payload['dateFin'] = data['dateFin'] ?? '';
-      
-      payload['nombreParticipants'] = data['nombreParticipants'] ?? 0;
-      payload['visibilite'] = data['visibilite'] ?? 'PUBLIC';
-      
-      if (data['structureEmettriceId'] != null) {
-        payload['structureEmettriceId'] = data['structureEmettriceId'];
-      }
+      // 1. On met à plat les paramètres simples
+payload['objet'] = data['objet'] ?? '';
+payload['nombreParticipants'] = data['nombreParticipants'] ?? 0;
+payload['visibilite'] = data['visibilite'] ?? 'PUBLIC';
 
+// N'envoie la clé QUE si la date est réellement renseignée et non vide
+if (data['dateDebut'] != null && data['dateDebut'].toString().isNotEmpty) {
+  payload['dateDebut'] = data['dateDebut'];
+}
+if (data['dateFin'] != null && data['dateFin'].toString().isNotEmpty) {
+  payload['dateFin'] = data['dateFin'];
+}
+
+if (data['structureEmettriceId'] != null) {
+  payload['structureEmettriceId'] = data['structureEmettriceId'];
+}
       // 2. On gère les fichiers en respectant scrupuleusement la clé 'files' au pluriel
       if (fileBytes.isNotEmpty) {
         final List<MultipartFile> multipartFiles = [];
@@ -132,24 +134,31 @@ class InvitationService {
   Future<Invitation> updateStatus(String id, InvitationStatus status) async {
     try {
       return Invitation.fromJson((await _api.dio.patch(
-        '{ApiConstants.invitations}/$id/status',
+        '${ApiConstants.invitations}/$id/status',
         queryParameters: {'status': status.apiValue},
       )).data);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  Future<Invitation> affecterAgent(String invId, String agentId, {bool responsable = false}) async {
+  /// Affecte une liste d'agents à une invitation en un seul appel batch.
+  /// Le backend crée les affectations ET les notifications automatiquement.
+  /// POST /api/invitations/{invId}/affecter  body: { agentIds: [...], responsableId: ... }
+  Future<Invitation> affecterAgents(String invId, List<String> agentIds, {String? responsableId}) async {
     try {
-      return Invitation.fromJson((await _api.dio.patch(
-        '${ApiConstants.invitations}/$invId/affecter/$agentId',
-        queryParameters: {'responsable': responsable},
-      )).data);
+      final res = await _api.dio.post(
+        '${ApiConstants.invitations}/$invId/affecter',
+        data: {
+          'agentIds': agentIds.map((id) => int.tryParse(id) ?? id).toList(),
+          'responsableId': responsableId != null ? (int.tryParse(responsableId) ?? responsableId) : null,
+        },
+      );
+      return Invitation.fromJson(res.data);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 }
 
 // ════════════════════════════════════════════════════════════════════
-// TICKET SERVICE (CORRIGÉ & CENTRALISÉ)
+// TICKET SERVICE
 // ════════════════════════════════════════════════════════════════════
 
 class TicketService {
@@ -159,7 +168,6 @@ class TicketService {
   Future<TicketPage> getAll({int page = 0, String? search,
       TicketStatus? status, TicketPriority? priority, String? currentUserId}) async {
     try {
-      // Utilisation directe de la méthode centralisée de ApiClient
       final res = await _api.getTickets(
         page: page,
         size: 10,
@@ -181,7 +189,6 @@ class TicketService {
 
   Future<Ticket> create(Map<String, dynamic> data, {Uint8List? fileBytes}) async {
     try {
-      // Routage propre via notre méthode de ApiClient
       final res = await _api.creerTicketMultipart(
         description: data['description'] ?? '',
         structure: data['structure'],
@@ -216,7 +223,6 @@ class TicketService {
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  // 🔥 🎯 RESOLUTION DE L'ERREUR 400 BAD REQUEST 🎯 🔥
   Future<Ticket> envoyerMessage(String ticketId, String message, {String? currentUserId}) async {
     try {
       if (currentUserId == null || currentUserId.isEmpty) {
@@ -226,7 +232,6 @@ class TicketService {
       final int idTicket = int.parse(ticketId);
       final int idAuteur = int.parse(currentUserId);
 
-      // On appelle la méthode corrigée dans ApiClient qui passe les données dans DATA (BODY JSON)
       final res = await _api.envoyerMessage(
         ticketId: idTicket,
         message: message,
@@ -292,13 +297,24 @@ class AuthService {
     on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
+  /// Étape 2 — Soumet le code reçu par email + le nouveau mot de passe.
+  /// POST /api/auth/reinitialiser-mot-de-passe
+  Future<void> resetPassword(String code, String nouveauMotDePasse) async {
+    try {
+      await _api.dio.post(
+        '/api/auth/reinitialiser-mot-de-passe',
+        data: {'code': code, 'nouveauMotDePasse': nouveauMotDePasse},
+      );
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
   Future<bool> isLoggedIn()             => _storage.isLoggedIn();
   Future<String?> get currentUserId     => _storage.userId;
   Future<String?> get currentUserNom    => _storage.userNom;
   Future<String?> get currentInitiales  => _storage.initiales;
 }
 
-// ════════════════════════════════════════════════════════════════════
+// getagent ══
 // DASHBOARD SERVICE
 // ════════════════════════════════════════════════════════════════════
 
@@ -362,14 +378,13 @@ class NotificationService {
 
   Future<void> markAsRead(String id) async {
     try {
-      await _api.dio.patch('/api/notifications/$id/read');
+      await _api.dio.put('/api/notifications/$id/lire');
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
   Future<void> markAllAsRead() async {
     try {
-      final uid = await _storage.userId ?? '';
-      await _api.dio.patch('/api/notifications/user/$uid/read-all');
+      await _api.dio.put('/api/notifications/lire-tout');
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
@@ -380,6 +395,7 @@ class NotificationService {
       return res.data['count'] ?? 0;
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
+
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -415,14 +431,60 @@ class AdminService {
   }
 
   Future<void> toggleUser(String id) async {
-    try { await _api.dio.patch('${ApiConstants.adminUsers}/$id/toggle-active'); }
+    try { await _api.dio.patch('${ApiConstants.adminUsers}/$id/toggle'); }
     on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // METHODE GET AGENTS OPTIMISÉE
+  // ════════════════════════════════════════════════════════════════════
+  Future<List<AppUser>> getAgents() async {
+    try {
+      // 1. On tente d'abord l'appel standard configuré sur ton backend
+      final res = await _api.dio.get('/api/agents');
+      final data = res.data;
+      
+      // On extrait la liste proprement, que ce soit un tableau direct ou paginé
+      List<dynamic> rawList = [];
+      if (data is List) {
+        rawList = data;
+      } else if (data is Map && data.containsKey('content')) {
+        rawList = data['content'] as List;
+      }
+
+      // On filtre directement ici pour ne renvoyer QUE les utilisateurs actifs
+      return rawList
+          .map((u) => AppUser.fromJson(u))
+          .where((user) => user.isActive)
+          .toList();
+
+    } on DioException catch (e) {
+      // Sécurité : Si le préfixe globale engendre une erreur 404 (ex: base URL inclut déjà /api)
+      if (e.response?.statusCode == 404) {
+        try {
+          final fallbackRes = await _api.dio.get('/agents');
+          final fallbackData = fallbackRes.data;
+          
+          List<dynamic> fallbackList = [];
+          if (fallbackData is List) {
+            fallbackList = fallbackData;
+          } else if (fallbackData is Map && fallbackData.containsKey('content')) {
+            fallbackList = fallbackData['content'] as List;
+          }
+
+          return fallbackList
+              .map((u) => AppUser.fromJson(u))
+              .where((user) => user.isActive)
+              .toList();
+        } catch (_) {}
+      }
+      throw ApiException.fromDio(e);
+    }
   }
 
   Future<Map<String, dynamic>> getSettings() async => {};
   Future<void> saveSettings(Map<String, dynamic> data) async {}
 }
-
 // ════════════════════════════════════════════════════════════════════
 // API EXCEPTION
 // ════════════════════════════════════════════════════════════════════

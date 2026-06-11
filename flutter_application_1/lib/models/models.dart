@@ -70,16 +70,25 @@ class Invitation {
     id:                 j['id']?.toString() ?? '',
     objet:              j['objet'] ?? '',
     structureEmettrice: j['structureEmettrice'] ?? '',
-    dateDebut:          DateTime.parse(j['dateDebut']),
-    dateFin:            DateTime.parse(j['dateFin']),
+    // ✅ CORRECTION : Sécurisation du parsing des dates pour éviter un crash si le format change
+    dateDebut:          j['dateDebut'] != null ? (DateTime.tryParse(j['dateDebut'].toString()) ?? DateTime.now()) : DateTime.now(),
+    dateFin:            j['dateFin'] != null ? (DateTime.tryParse(j['dateFin'].toString()) ?? DateTime.now()) : DateTime.now(),
     nombreParticipants: j['nombreParticipants'] ?? 0,
     lieu:               j['lieu'],
     description:        j['description'],
     status:             InvitationStatusExt.fromApi(j['status']),
     agentsAffectes: (j['agentsAffectes'] as List<dynamic>? ?? [])
         .map((e) => AppUser.fromJson(e)).toList(),
+    // ✅ CORRECTION CRITIQUE : Extrait l'URL de l'objet pièce jointe (Map) au lieu de faire un .toString() brut
     files: (j['files'] as List<dynamic>? ?? j['piecesJointes'] as List<dynamic>? ?? [])
-        .map((e) => e.toString()).toList(),
+        .map((e) {
+          if (e is Map) {
+            return e['url']?.toString() ?? '';
+          }
+          return e.toString();
+        })
+        .where((url) => url.isNotEmpty)
+        .toList(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -123,7 +132,6 @@ class InvitationPage {
     );
   }
 }
-
 // ════════════════════════════════════════════════════════════════════
 // TICKET MODELE
 // ════════════════════════════════════════════════════════════════════
@@ -325,7 +333,7 @@ extension UserRoleExt on UserRole {
 }
 
 class AppUser {
-  final String id; // Tolère les UUIDs natifs de PostgreSQL générés en backend
+  final String id; // Tolère les formats numériques convertis proprement en String
   final String nom;
   final String? prenom;
   final String email;
@@ -336,6 +344,7 @@ class AppUser {
   final String? service;
 
   bool get isActive => active;
+  bool get estUnIntervenant => role == UserRole.agent || role == UserRole.admin;
 
   const AppUser({
     required this.id,
@@ -349,17 +358,24 @@ class AppUser {
     this.service,
   });
 
-  factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
-    id:         j['id']?.toString() ?? '',
-    nom:        j['nom'] ?? '',
-    prenom:     j['prenom'],
-    email:      j['email'] ?? '',
-    role:       UserRoleExt.fromApi(j['role']),
-    initiales:  j['initiales'] ?? _computeInitiales(j['nom'], j['prenom']),
-    active:     j['active'] ?? j['isActive'] ?? true, 
-    structure:  j['structure'],
-    service:    j['service'],
-  );
+  factory AppUser.fromJson(Map<String, dynamic> j) {
+    // ✅ CORRECTION : On force le passage en majuscules pour éviter les ratés de casse
+    final roleStr = j['role']?.toString().toUpperCase() ?? '';
+    
+    return AppUser(
+      // ✅ CORRECTION : Gère le passage d'un ID entier numérique (ex: 3) vers un String attendu par l'UI
+      id: j['id']?.toString() ?? j['userId']?.toString() ?? '',
+      nom: j['nom'] ?? '',
+      prenom: j['prenom'],
+      email: j['email'] ?? '',
+      role: UserRoleExt.fromApi(roleStr),
+      initiales: j['initiales'] ?? _computeInitiales(j['nom'], j['prenom']),
+      // Tolère 'actif' (venant de la table PG) ou 'active'
+      active: j['actif'] ?? j['active'] ?? j['isActive'] ?? true, 
+      structure: j['structure'],
+      service: j['service'],
+    );
+  }
 
   static String _computeInitiales(String? nom, String? prenom) {
     final n = (nom?.isNotEmpty == true) ? nom![0].toUpperCase() : '';
@@ -367,7 +383,6 @@ class AppUser {
     return '$n$p';
   }
 }
-
 // ════════════════════════════════════════════════════════════════════
 // AUTH RESPONSE & DASHBOARD & NOTIF
 // ════════════════════════════════════════════════════════════════════

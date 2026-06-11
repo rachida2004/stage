@@ -18,7 +18,6 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // ── BEAN MANQUANT — sans ça AuthController ne peut pas s'injecter ──
     @Bean
     public AuthenticationManager authenticationManager(
             AuthenticationConfiguration cfg) throws Exception {
@@ -40,11 +39,30 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
+                
+                // 🎯 AJOUT : Autorise le téléchargement des pièces jointes sans token JWT
+                .requestMatchers("/api/files/download/**").permitAll()
+                
                 .requestMatchers("/api/invitations/*/export/**").permitAll()
                 .requestMatchers("/api/dashboard/**").permitAll()
                 .requestMatchers("/error").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/agents").permitAll()
+                
+                // Admin uniquement
                 .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
-              .requestMatchers("/api/agents/**").hasAuthority("AGENT_DSI")
+                
+                // Liste des agents — accessible à tous les authentifiés (pour le modal d'affectation)
+                .requestMatchers("/api/agents/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR")
+                
+                // Tickets — USAGER peut créer (POST) et voir les siens (GET)
+                .requestMatchers("/api/tickets/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
+                
+                // Invitations — lecture pour tous, écriture filtrée côté service si besoin
+                .requestMatchers("/api/invitations/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
+                
+                // Notifications — accessibles à tous les authentifiés
+                .requestMatchers("/api/notifications/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
+                
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

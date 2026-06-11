@@ -1,13 +1,21 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'storage_keys.dart'; 
+import 'storage_keys.dart';
 
 class StorageService {
   final FlutterSecureStorage? _secure;
   SharedPreferences? _prefs;
 
-  // Constructeur utilisant des paramètres nommés { }
+  // Cache synchrone — mis à jour à chaque saveSession / clearSession
+  String? _cachedUserId;
+  String? _cachedUserNom;
+  String? _cachedUserRole;
+  String? _cachedInitiales;
+
+  /// Accès synchrone à l'userId (disponible dès après le login)
+  String? get cachedUserId => _cachedUserId;
+
   StorageService({FlutterSecureStorage? secure}) : _secure = kIsWeb ? null : secure;
 
   Future<SharedPreferences> get _p async {
@@ -37,13 +45,19 @@ class StorageService {
   }
 
   Future<void> saveSession({
-    required String accessToken, 
+    required String accessToken,
     required String refreshToken,
-    required String userId, 
-    required String userNom, 
+    required String userId,
+    required String userNom,
     required String userRole,
     String initiales = '',
   }) async {
+    // Mise à jour du cache synchrone avant l'écriture async
+    _cachedUserId    = userId;
+    _cachedUserNom   = userNom;
+    _cachedUserRole  = userRole;
+    _cachedInitiales = initiales;
+
     await Future.wait([
       _write(StorageKeys.accessToken, accessToken),
       _write(StorageKeys.refreshToken, refreshToken),
@@ -54,8 +68,14 @@ class StorageService {
     ]);
   }
 
-  Future<void> clearSession() => _deleteAll();
-  
+  Future<void> clearSession() async {
+    _cachedUserId    = null;
+    _cachedUserNom   = null;
+    _cachedUserRole  = null;
+    _cachedInitiales = null;
+    await _deleteAll();
+  }
+
   Future<bool> isLoggedIn() async {
     final token = await _read(StorageKeys.accessToken);
     return token != null && token.isNotEmpty;

@@ -3,14 +3,22 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
-// ✅ Import requis pour faire fonctionner launchUrl directement ici
 import 'package:url_launcher/url_launcher.dart'; 
+import 'package:flutter_application_1/bloc/all_blocs.dart';
 
 import '../models/models.dart';
+import '../services/services.dart';
 import '../theme/app_theme.dart';
 import '../widget/shared_widget.dart';
-import '../bloc/all_blocs.dart';
-import '../core/api_constants.dart'; // Requis pour charger l'URL de base du backend
+import '../core/api_constants.dart';
+
+// Fonction utilitaire pour gérer l'ouverture des pièces jointes et des exports
+Future<void> ouvrirPieceJointe(String urlOrPath) async {
+  final Uri url = Uri.parse(urlOrPath.startsWith('http') ? urlOrPath : '${ApiConstants.baseUrl}/$urlOrPath');
+  if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+    throw Exception('Impossible d\'ouvrir le lien : $url');
+  }
+}
 
 class InvitationsScreen extends StatefulWidget {
   const InvitationsScreen({super.key});
@@ -55,9 +63,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
         }
       },
       builder: (context, state) {
-        final allInvitations = state is InvitationsLoaded
-            ? state.page.items
-            : <Invitation>[];
+        final allInvitations = state is InvitationsLoaded ? state.page.items : <Invitation>[];
         final filtered = _applyFilters(allInvitations);
         final loading = state is InvitationLoading;
 
@@ -156,7 +162,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   void _openDetail(BuildContext context, Invitation inv) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => _InvitationDetailScreen(inv: inv)),
+      MaterialPageRoute(builder: (_) => InvitationDetailScreen(inv: inv)),
     );
   }
 
@@ -295,7 +301,6 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
   DateTime? _dateFin;
 
   final List<PlatformFile> _selectedFiles = [];
-  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -323,13 +328,14 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
       });
     }
   }
-Future<void> _pickFiles() async {
+
+  Future<void> _pickFiles() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'png'],
-        withData: true, // ✨ FIX : true pour TOUTES les plateformes (Web + Mobile)
+        withData: true,
       );
 
       if (result != null) {
@@ -348,6 +354,7 @@ Future<void> _pickFiles() async {
       }
     }
   }
+
   void _removeFile(int index) {
     setState(() {
       _selectedFiles.removeAt(index);
@@ -357,7 +364,7 @@ Future<void> _pickFiles() async {
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
- void _submit() {
+  void _submit() {
     if (_objetCtrl.text.trim().isEmpty ||
         _structCtrl.text.trim().isEmpty ||
         _dateDebut == null ||
@@ -368,8 +375,6 @@ Future<void> _pickFiles() async {
       return;
     }
 
-    // ✨ FIX : Plus besoin de distinction Web/Mobile complexe. 
-    // On extrait les octets directement pour tout le monde.
     final List<MapEntry<String, Uint8List>> fileBytes = _selectedFiles
         .where((f) => f.bytes != null)
         .map((f) => MapEntry(f.name, f.bytes!))
@@ -387,7 +392,7 @@ Future<void> _pickFiles() async {
         if (_nbCtrl.text.trim().isNotEmpty)
           'nombreParticipants': int.tryParse(_nbCtrl.text.trim()) ?? 0,
       },
-      filePaths: const [], // Tu peux laisser vide ou le supprimer selon la signature de ton Event
+      filePaths: const [],
       fileBytes: fileBytes,
     ));
 
@@ -558,236 +563,650 @@ Future<void> _pickFiles() async {
   }
 }
 
-// ── Écran de Détail ─────────────────────────────────────────────────
 
-class _InvitationDetailScreen extends StatelessWidget {
+
+class InvitationDetailScreen extends StatefulWidget {
   final Invitation inv;
-  const _InvitationDetailScreen({required this.inv});
+  const InvitationDetailScreen({super.key, required this.inv});
+
+  @override
+  State<InvitationDetailScreen> createState() => _InvitationDetailScreenState();
+}
+
+class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
+  final List<String> _selectedAgentIds = []; 
+  String? _responsableId;
+
+  // Configuration de l'URL de ton serveur de gestion DSI (Ajuste l'adresse en prod ou préprod)
+  // Utilise "http://10.0.2.2:8080" pour tester depuis un émulateur Android vers ton localhost
+  static final String _baseUrl = kIsWeb ? "http://localhost:8085" : "http://10.0.2.2:8085";
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedAgentIds.addAll(widget.inv.agentsAffectes.map((a) => a.id.toString()));
+  }
 
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
+ // ─── 1. OUVERTURE ET TÉLÉCHARGEMENT DE LA PIÈCE JOINTE ──────────────────────
   void _openFile(BuildContext context, String fileUrlOrName) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Tentative d\'ouverture de la pièce jointe...'),
-        backgroundColor: AppColors.primary,
-        duration: Duration(seconds: 1),
-      ),
-    );
-    await ouvrirPieceJointe(fileUrlOrName);
+    String targetUrl = fileUrlOrName;
+
+    // Décodage si la chaîne reçue ressemble à "nom: doc.pdf, chemin: 45_doc.pdf"
+    if (fileUrlOrName.contains('chemin:')) {
+      final cheminMatch = RegExp(r"chemin:\s*([^,}]+)").firstMatch(fileUrlOrName);
+      if (cheminMatch != null) targetUrl = cheminMatch.group(1)!.trim();
+    }
+
+    // Si c'est un nom de fichier ou un chemin relatif, on ajoute le préfixe Spring Boot
+    if (!targetUrl.startsWith('http')) {
+      // 🎯 Sécurité : On retire le premier caractère si c'est un slash '/'
+      if (targetUrl.startsWith('/')) {
+        targetUrl = targetUrl.substring(1);
+      }
+      
+      // On s'assure d'avoir une URL propre avec un seul slash après download
+      targetUrl = "$_baseUrl/api/files/download/$targetUrl";
+    }
+
+    // Petit log de contrôle bien pratique en console de debug 
+    print("🎯 URL finale appelée : $targetUrl");
+
+    final Uri url = Uri.parse(targetUrl);
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Impossible d\'ouvrir le lien système';
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de l\'ouverture : $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
-  // ✅ Appelle directement l'API de génération PDF globale
-  void _exportToPDF(BuildContext context) async {
+  // ─── 2. EXPORT ET TÉLÉCHARGEMENT DU DOCUMENT PDF ────────────────────────────
+  Future<void> _exportPdf(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Génération du PDF en cours...'),
-        backgroundColor: AppColors.primary,
-        duration: Duration(seconds: 1),
+        content: Text('Export PDF en cours…'),
+        backgroundColor: Color(0xFF2ECC71),
+        duration: Duration(seconds: 2),
       ),
     );
-    await ouvrirPieceJointe("api/invitations/${inv.id}/export/pdf");
+
+    final String exportUrl = '$_baseUrl/api/invitations/${widget.inv.id}/export/pdf';
+    final Uri url = Uri.parse(exportUrl);
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Lien d\'export introuvable ou inaccessible';
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Échec de l\'export PDF : $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
-  // ✅ Appelle directement l'API de génération Word globale
-  void _exportToWord(BuildContext context) async {
+  // ─── 3. EXPORT ET TÉLÉCHARGEMENT DU DOCUMENT WORD ───────────────────────────
+  Future<void> _exportWord(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Génération du document Word en cours...'),
-        backgroundColor: AppColors.primary,
-        duration: Duration(seconds: 1),
+        content: Text('Export Word en cours…'),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 2),
       ),
     );
-    await ouvrirPieceJointe("api/invitations/${inv.id}/export/word");
+
+    final String exportUrl = '$_baseUrl/api/invitations/${widget.inv.id}/export/word';
+    final Uri url = Uri.parse(exportUrl);
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Lien d\'export introuvable ou inaccessible';
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Échec de l\'export Word : $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _showAffectationModal(BuildContext context) async {
+    setState(() {
+      _selectedAgentIds.clear();
+      _selectedAgentIds.addAll(widget.inv.agentsAffectes.map((a) => a.id.toString()));
+    });
+
+    final InvitationBloc invBloc = BlocProvider.of<InvitationBloc>(context);
+
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (modalContext) {
+        return BlocProvider.value(
+          value: invBloc,
+          child: _AffectationModal(
+            inv: widget.inv,
+            initialSelectedIds: List.from(_selectedAgentIds),
+            initialResponsableId: _responsableId,
+            onConfirmed: (selectedIds, responsableId) {
+              setState(() {
+                _selectedAgentIds
+                  ..clear()
+                  ..addAll(selectedIds);
+                _responsableId = responsableId;
+              });
+              
+              invBloc.add(AssignerAgentsInvitation(
+                invId: widget.inv.id.toString(),
+                agentIds: selectedIds,
+                responsableId: responsableId,
+              ));
+            },
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Détail invitation'),
+        backgroundColor: const Color(0xFF2ECC71),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text(
+          'Détail invitation',
+          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+        ),
         actions: [
           TextButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.person_add_outlined, size: 18),
-            label: const Text('Affecter'),
+            onPressed: () => _showAffectationModal(context),
+            icon: const Icon(Icons.person_add_outlined, size: 20, color: Colors.white),
+            label: const Text(
+              'Affecter',
+              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      backgroundColor: const Color(0xFFF1F5F9),
+      body: BlocBuilder<InvitationBloc, InvitationState>(
+        builder: (context, state) {
+          Invitation invitationAffichee = widget.inv;
+          if (state is InvDetailLoaded) {
+            invitationAffichee = state.inv;
+          }
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            children: [
+              // ── Carte principale ──────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      invitationAffichee.objet,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 8),
+                    StatusBadge.fromInvStatus(invitationAffichee.status),
+                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+                    _DetailRow(
+                      icon: Icons.grid_view_outlined,
+                      label: 'Structure émettrice',
+                      value: invitationAffichee.structureEmettrice.isNotEmpty ? invitationAffichee.structureEmettrice : '—',
+                    ),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+                    _DetailRow(
+                      icon: Icons.calendar_today_outlined,
+                      label: 'Date de début',
+                      value: _fmt(invitationAffichee.dateDebut),
+                    ),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+                    _DetailRow(
+                      icon: Icons.event_outlined,
+                      label: 'Date de fin',
+                      value: _fmt(invitationAffichee.dateFin),
+                    ),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+                    _DetailRow(
+                      icon: Icons.location_on_outlined,
+                      label: 'Lieu',
+                      value: invitationAffichee.lieu?.isNotEmpty == true ? invitationAffichee.lieu! : 'Non précisé',
+                    ),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+                    _DetailRow(
+                      icon: Icons.group_outlined,
+                      label: 'Participants',
+                      value: invitationAffichee.nombreParticipants > 0 ? '${invitationAffichee.nombreParticipants}' : 'Non défini',
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── Pièces jointes ────────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pièces jointes associées',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 10),
+                    if (invitationAffichee.files.isEmpty)
+                      const Text(
+                        'Aucune pièce jointe pour cette invitation',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: invitationAffichee.files.length,
+                        itemBuilder: (context, index) {
+                          final rawFileString = invitationAffichee.files[index];
+                          String displayName = "Pièce jointe";
+                          if (rawFileString.contains('nom:')) {
+                            final nomMatch = RegExp(r"nom:\s*([^,]+)").firstMatch(rawFileString);
+                            if (nomMatch != null) displayName = nomMatch.group(1)!.trim();
+                          } else {
+                            displayName = rawFileString.contains('/') ? rawFileString.split('/').last : rawFileString;
+                          }
+                          return InkWell(
+                            onTap: () => _openFile(context, rawFileString),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.insert_drive_file_outlined, color: Color(0xFF2ECC71), size: 22),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      displayName,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF2ECC71),
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const Icon(Icons.visibility_outlined, size: 18, color: Color(0xFF94A3B8)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── Agents affectés ───────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Agents affectés',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 10),
+                    if (invitationAffichee.agentsAffectes.isEmpty)
+                      const Text(
+                        'Aucun agent affecté',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: invitationAffichee.agentsAffectes.length,
+                        itemBuilder: (context, index) {
+                          final agent = invitationAffichee.agentsAffectes[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: const Color(0xFFE6F1FB),
+                                  radius: 16,
+                                  child: Text(
+                                    agent.nom.substring(0, 1).toUpperCase(),
+                                    style: const TextStyle(color: Color(0xFF2ECC71), fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '${agent.nom} ${agent.prenom ?? ''}'.trim(),
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Bouton Exporter en PDF ────────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: () => _exportPdf(context),
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                  label: const Text('Exporter en PDF', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2ECC71),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // ── Bouton Exporter en Word ───────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: () => _exportWord(context),
+                  icon: const Icon(Icons.download_outlined, size: 20),
+                  label: const Text('Exporter en Word', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black87,
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal d'affectation d'agents
+// ─────────────────────────────────────────────────────────────────────────────
+class _AffectationModal extends StatefulWidget {
+  final Invitation inv;
+  final List<String> initialSelectedIds;
+  final String? initialResponsableId;
+  final void Function(List<String> selectedIds, String? responsableId) onConfirmed;
+
+  const _AffectationModal({
+    required this.inv,
+    required this.initialSelectedIds,
+    required this.initialResponsableId,
+    required this.onConfirmed,
+  });
+
+  @override
+  State<_AffectationModal> createState() => _AffectationModalState();
+}
+
+class _AffectationModalState extends State<_AffectationModal> {
+  late List<String> _selectedIds;
+  String? _responsableId;
+  List<AppUser> _agents = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = List.from(widget.initialSelectedIds);
+    _responsableId = widget.initialResponsableId;
+    _loadAgents();
+  }
+
+  Future<void> _loadAgents() async {
+    try {
+      if (!mounted) return;
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+
+      final agents = await sl<AdminService>().getAgents();
+
+      if (mounted) {
+        setState(() {
+          _agents = agents;
+          _loading = false;
+        });
+      }
+    } catch (e, stack) {
+      debugPrint("❌ ERREUR CHARGEMENT MODAL AGENTS : $e");
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        top: 20, left: 20, right: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Affecter des agents',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const Divider(),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'Erreur de communication : $_error',
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else if (_agents.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: Text('Aucun agent disponible')),
+            )
+          else
+            WidgetAgentsList(
+              agents: _agents,
+              selectedIds: _selectedIds,
+              responsableId: _responsableId,
+              onChanged: (selected, resp) {
+                setState(() {
+                  _selectedIds = selected;
+                  _responsableId = resp;
+                });
+              },
+            ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2ECC71),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.check_circle_outline, size: 18),
+            label: Text(_selectedIds.isEmpty
+                ? 'Confirmer (aucun sélectionné)'
+                : 'Confirmer — ${_selectedIds.length} agent(s)'),
+            onPressed: () {
+              widget.onConfirmed(_selectedIds, _responsableId);
+              Navigator.pop(context, true);
+            },
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  inv.objet,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                StatusBadge.fromInvStatus(inv.status),
-                const SizedBox(height: 16),
-                const Divider(),
-                _DetailRow(
-                  icon: Icons.business_outlined,
-                  label: 'Structure émettrice',
-                  value: inv.structureEmettrice,
-                ),
-                _DetailRow(
-                  icon: Icons.calendar_today_outlined,
-                  label: 'Date de début',
-                  value: _fmt(inv.dateDebut),
-                ),
-                _DetailRow(
-                  icon: Icons.event_outlined,
-                  label: 'Date de fin',
-                  value: _fmt(inv.dateFin),
-                ),
-                _DetailRow(
-                  icon: Icons.location_on_outlined,
-                  label: 'Lieu',
-                  value: inv.lieu ?? 'Non précisé',
-                ),
-                _DetailRow(
-                  icon: Icons.group_outlined,
-                  label: 'Participants',
-                  value: inv.nombreParticipants > 0 ? '${inv.nombreParticipants}' : 'Non défini',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Pièces jointes associées',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 10),
-                if (inv.files.isEmpty)
-                  const Text(
-                    'Aucune pièce jointe pour cette invitation',
-                    style: TextStyle(fontSize: 13, color: AppColors.muted),
-                  )
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: inv.files.length,
-                    itemBuilder: (context, index) {
-                      final rawFileString = inv.files[index];
-                      
-                      String displayName = "Pièce jointe";
+    );
+  }
+}
 
-                      if (rawFileString.contains('nom:')) {
-                        final nomMatch = RegExp(r"nom:\s*([^,]+)").firstMatch(rawFileString);
-                        if (nomMatch != null) displayName = nomMatch.group(1)!.trim();
-                      } else {
-                        displayName = rawFileString.contains('/') ? rawFileString.split('/').last : rawFileString;
-                      }
+// Composant interne pour encapsuler la liste dynamique des agents
+class WidgetAgentsList extends StatelessWidget {
+  final List<AppUser> agents;
+  final List<String> selectedIds;
+  final String? responsableId;
+  final Function(List<String> selected, String? resp) onChanged;
 
-                      return InkWell(
-                        onTap: () => _openFile(context, rawFileString),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.insert_drive_file_outlined,
-                                color: AppColors.primary,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  displayName,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.primary,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const Icon(
-                                Icons.visibility_outlined,
-                                size: 16,
-                                color: AppColors.muted,
-                              ),
-                            ],
+  const WidgetAgentsList({
+    super.key,
+    required this.agents,
+    required this.selectedIds,
+    required this.responsableId,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 320),
+      child: ListView.builder(
+        shrinkWrap: true,
+        itemCount: agents.length,
+        itemBuilder: (_, i) {
+          final agent = agents[i];
+          final agentId = agent.id;
+          final isSelected = selectedIds.contains(agentId);
+          final isResponsable = responsableId == agentId;
+          return Column(
+            children: [
+              CheckboxListTile(
+                dense: true,
+                activeColor: const Color(0xFF2ECC71),
+                title: Text(
+                  '${agent.nom} ${agent.prenom ?? ''}'.trim(),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                subtitle: isSelected
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Responsable', 
+                            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                           ),
-                        ),
-                      );
-                    },
-                  )
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Agents affectés',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 10),
-                if (inv.agentsAffectes.isEmpty)
-                  const Text(
-                    'Aucun agent affecté',
-                    style: TextStyle(fontSize: 13, color: AppColors.muted),
-                  )
-                else
-                  ...inv.agentsAffectes.map((agent) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            UserAvatar(initials: agent.initiales, size: 30),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${agent.nom}${agent.prenom != null ? ' ${agent.prenom}' : ''}',
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryLight,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'Agent',
-                                style: TextStyle(fontSize: 11, color: AppColors.primaryDark),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // ✅ Bouton PDF lié à l'API via _exportToPDF
-          ElevatedButton.icon(
-            onPressed: () => _exportToPDF(context),
-            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-            label: const Text('Exporter en PDF'),
-          ),
-          const SizedBox(height: 8),
-          // ✅ Bouton Word lié à l'API via _exportToWord
-          OutlinedButton.icon(
-            onPressed: () => _exportToWord(context),
-            icon: const Icon(Icons.download_outlined, size: 18),
-            label: const Text('Exporter en Word'),
-          ),
-        ],
+                          const SizedBox(width: 8),
+                          Switch(
+                            value: isResponsable,
+                            activeColor: const Color(0xFF2ECC71),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            onChanged: (val) {
+                              onChanged(selectedIds, val ? agentId : null);
+                            },
+                          ),
+                        ],
+                      )
+                    : null,
+                value: isSelected,
+                onChanged: (checked) {
+                  final updatedIds = List<String>.from(selectedIds);
+                  String? updatedResp = responsableId;
+                  if (checked == true) {
+                    updatedIds.add(agentId);
+                  } else {
+                    updatedIds.remove(agentId);
+                    if (updatedResp == agentId) updatedResp = null;
+                  }
+                  onChanged(updatedIds, updatedResp);
+                },
+              ),
+              const Divider(height: 1, indent: 16),
+            ],
+          );
+        },
       ),
     );
   }
@@ -795,86 +1214,32 @@ class _InvitationDetailScreen extends StatelessWidget {
 
 class _DetailRow extends StatelessWidget {
   final IconData icon;
-  final String label, value;
+  final String label;
+  final String value;
 
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _DetailRow({required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 16, color: AppColors.muted),
-          const SizedBox(width: 10),
+          Icon(icon, size: 20, color: const Color(0xFF64748B)),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+              style: const TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ),
           Text(
             value,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            style: const TextStyle(fontSize: 14, color: Color.fromARGB(255, 9, 9, 10)),
           ),
         ],
       ),
     );
-  }
-}
-
-// ── Fonction Globale Locale pour l'ouverture de fichiers corrigée ───────────────────
-Future<void> ouvrirPieceJointe(String urlCompleteOuRelative) async {
-  String urlString = urlCompleteOuRelative.trim();
-  
-  if (urlString.contains('url:')) {
-    final match = RegExp(r"url:\s*([^,}]+)").firstMatch(urlString);
-    if (match != null) {
-      urlString = match.group(1)!.trim();
-    }
-  }
-
-  if (urlString.endsWith('}')) {
-    urlString = urlString.substring(0, urlString.length - 1).trim();
-  }
-
-  if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
-    final cleanPath = urlString.startsWith('/') ? urlString.substring(1) : urlString;
-    
-    String baseUrl = ApiConstants.baseUrl.endsWith('/') 
-        ? ApiConstants.baseUrl 
-        : '${ApiConstants.baseUrl}/';
-        
-    // ⬇️ CORRECTION ICI : Si le chemin relatif commence déjà par 'api/', 
-    // on retire temporairement le '/api/' de la baseUrl pour éviter le doublon.
-    if (cleanPath.startsWith('api/')) {
-      baseUrl = baseUrl.replaceAll('/api/', '/');
-    }
-    // Gestion existante pour le dossier uploads direct
-    else if (cleanPath.startsWith('uploads/') && baseUrl.contains('/api/')) {
-      baseUrl = baseUrl.replaceAll('/api/', '/');
-    }
-        
-    urlString = '$baseUrl$cleanPath';
-  }
-
-  final Uri url = Uri.parse(Uri.encodeFull(urlString));
-
-  try {
-    print('Tentative d\'ouverture de l\'URL finale : $urlString');
-
-    final bool lance = await launchUrl(
-      url,
-      mode: LaunchMode.externalApplication,
-    );
-    if (!lance) {
-      throw "Impossible d'ouvrir l'URL : $urlString";
-    }
-  } catch (e) {
-    print('Erreur lors de l\'ouverture du fichier : $e');
   }
 }

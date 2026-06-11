@@ -13,7 +13,7 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
         SELECT * FROM invitation i
         WHERE (:search IS NULL OR i.objet ILIKE '%' || CAST(:search AS varchar) || '%')
         AND (:statut IS NULL OR i.statut = CAST(:statut AS varchar))
-        ORDER BY i.date_creation DESC
+        ORDER BY i.id DESC
         """,
         countQuery = """
         SELECT COUNT(*) FROM invitation i

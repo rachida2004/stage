@@ -618,11 +618,13 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
   final _structureCtrl = TextEditingController(); 
   TicketPriority _priority = TicketPriority.normale;
   PlatformFile? _selectedFile;
+  final TextEditingController _serviceCtrl = TextEditingController();
 
   @override
   void dispose() {
     _descCtrl.dispose();
     _structureCtrl.dispose();
+    _serviceCtrl.dispose();
     super.dispose();
   }
 
@@ -678,7 +680,13 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _structureCtrl,
-                decoration: const InputDecoration(labelText: 'Structure / Service concerné'),
+                decoration: const InputDecoration(labelText: 'Structure '),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _serviceCtrl,
+                decoration: const InputDecoration(labelText: ' Service concerné'),
                 validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
               ),
               const SizedBox(height: 12),

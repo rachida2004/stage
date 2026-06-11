@@ -15,6 +15,11 @@ class LoginSubmitted extends AuthEvent { final String e, p; LoginSubmitted(this.
 class RegisterSubmitted extends AuthEvent { final Map<String, dynamic> data; RegisterSubmitted(this.data); @override List<Object?> get props => [data]; }
 class LogoutRequested extends AuthEvent {}
 class ForgotPwdSubmitted extends AuthEvent { final String email; ForgotPwdSubmitted(this.email); @override List<Object?> get props => [email]; }
+class ResetPwdSubmitted extends AuthEvent {
+  final String code, nouveauMotDePasse;
+  ResetPwdSubmitted(this.code, this.nouveauMotDePasse);
+  @override List<Object?> get props => [code, nouveauMotDePasse];
+}
 
 abstract class AuthState extends Equatable { @override List<Object?> get props => []; }
 class AuthInitial extends AuthState {}
@@ -23,6 +28,7 @@ class AuthOk extends AuthState { final String userNom; final String initiales; A
 class AuthOut extends AuthState {}
 class AuthError extends AuthState { final String msg; AuthError(this.msg); @override List<Object?> get props => [msg]; }
 class AuthForgotSent extends AuthState {}
+class AuthResetOk extends AuthState {} // Mot de passe réinitialisé avec succès
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthService _s;
@@ -56,6 +62,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(AuthLoading());
       try { await _s.forgotPassword(e.email); emit(AuthForgotSent()); }
       catch (err) { emit(AuthError(err.toString())); }
+    });
+    on<ResetPwdSubmitted>((e, emit) async {
+      emit(AuthLoading());
+      try {
+        await _s.resetPassword(e.code, e.nouveauMotDePasse);
+        emit(AuthResetOk());
+      } catch (err) { emit(AuthError(err.toString())); }
     });
   }
 }
@@ -126,6 +139,20 @@ class UpdateInvitation extends InvitationEvent { final String id; final Map<Stri
 class DeleteInvitation extends InvitationEvent { final String id; DeleteInvitation(this.id); @override List<Object?> get props => [id]; }
 class AffecterAgentInv extends InvitationEvent { final String invId, agentId; final bool responsable; AffecterAgentInv(this.invId, this.agentId, {this.responsable=false}); @override List<Object?> get props => [invId, agentId, responsable]; }
 
+/// Affecte plusieurs agents à une invitation en un seul appel.
+/// Le backend gère affectations + notifications automatiquement.
+class AssignerAgentsInvitation extends InvitationEvent {
+  final String invId;
+  final List<String> agentIds;
+  final String? responsableId;
+  AssignerAgentsInvitation({
+    required this.invId,
+    required this.agentIds,
+    this.responsableId,
+  });
+  @override List<Object?> get props => [invId, agentIds, responsableId];
+}
+
 abstract class InvitationState extends Equatable { @override List<Object?> get props => []; }
 class InvitationInitial extends InvitationState {}
 class InvitationLoading extends InvitationState {}
@@ -148,7 +175,21 @@ class InvitationBloc extends Bloc<InvitationEvent, InvitationState> {
     });
     on<UpdateInvitation>((e, emit) async { emit(InvitationLoading()); try { await _s.update(e.id, e.data); emit(InvitationSuccess('Invitation mise à jour')); } catch (err) { emit(InvitationError(err.toString())); } });
     on<DeleteInvitation>((e, emit) async { emit(InvitationLoading()); try { await _s.delete(e.id); emit(InvitationSuccess('Invitation supprimée')); } catch (err) { emit(InvitationError(err.toString())); } });
-    on<AffecterAgentInv>((e, emit) async { emit(InvitationLoading()); try { emit(InvDetailLoaded(await _s.affecterAgent(e.invId, e.agentId, responsable: e.responsable))); } catch (err) { emit(InvitationError(err.toString())); } });
+    // Conservé pour compatibilité ascendante (affectation ticket)
+    on<AffecterAgentInv>((e, emit) async { emit(InvitationLoading()); try { emit(InvDetailLoaded(await _s.getById(e.invId))); } catch (err) { emit(InvitationError(err.toString())); } });
+
+    on<AssignerAgentsInvitation>((e, emit) async {
+      emit(InvitationLoading());
+      try {
+        // Un seul appel POST — le backend affecte ET notifie
+        final inv = await _s.affecterAgents(
+          e.invId,
+          e.agentIds,
+          responsableId: e.responsableId,
+        );
+        emit(InvDetailLoaded(inv));
+      } catch (err) { emit(InvitationError(err.toString())); }
+    });
   }
 }
 
@@ -220,28 +261,28 @@ class TicketError extends TicketState { final String msg; TicketError(this.msg);
 // ════════════════════════════════════════════════════════════════════
 class TicketBloc extends Bloc<TicketEvent, TicketState> {
   final TicketService _s;
-  final String? _uid;
+  String? _uid; // mutable — mis à jour après login
 
-  TicketBloc(this._s, {String? currentUserId}) : _uid = currentUserId, super(TicketInitial()) {
-    
-    on<LoadTickets>((e, emit) async { 
-      emit(TicketLoading()); 
-      try { 
-        emit(TicketsLoaded(await _s.getAll(page: e.page, search: e.search, status: e.status, priority: e.priority, currentUserId: _uid))); 
-      } catch (err) { 
-        emit(TicketError(err.toString())); 
-      } 
+  TicketBloc(this._s, {String? currentUserId})
+      : _uid = currentUserId,
+        super(TicketInitial()) {
+
+    on<LoadTickets>((e, emit) async {
+      emit(TicketLoading());
+      try {
+        emit(TicketsLoaded(await _s.getAll(
+            page: e.page, search: e.search, status: e.status,
+            priority: e.priority, currentUserId: _uid)));
+      } catch (err) { emit(TicketError(err.toString())); }
     });
-    
-    on<LoadTicketDetail>((e, emit) async { 
-      emit(TicketLoading()); 
-      try { 
-        emit(TicketDetailL(await _s.getById(e.id, currentUserId: _uid))); 
-      } catch (err) { 
-        emit(TicketError(err.toString())); 
-      } 
+
+    on<LoadTicketDetail>((e, emit) async {
+      emit(TicketLoading());
+      try {
+        emit(TicketDetailL(await _s.getById(e.id, currentUserId: _uid)));
+      } catch (err) { emit(TicketError(err.toString())); }
     });
-    
+
     on<CreateTicket>((e, emit) async {
       emit(TicketLoading());
       try {
@@ -250,42 +291,44 @@ class TicketBloc extends Bloc<TicketEvent, TicketState> {
           'structure': e.structure,
           'priority': e.priority.apiValue,
           'attachmentName': e.attachmentName,
+          if (_uid != null) 'createurId': int.tryParse(_uid!),
         };
         await _s.create(ticketData, fileBytes: e.attachmentBytes);
         emit(TicketSuccess('Ticket créé'));
-      } catch (err) { 
-        emit(TicketError(err.toString())); 
-      }
+      } catch (err) { emit(TicketError(err.toString())); }
     });
-    
-    on<UpdateStatut>((e, emit) async { 
-      emit(TicketLoading()); 
-      try { 
-        emit(TicketDetailL(await _s.updateStatut(e.id, e.statut, solution: e.solution, currentUserId: _uid))); 
-      } catch (err) { 
-        emit(TicketError(err.toString())); 
-      } 
+
+    on<UpdateStatut>((e, emit) async {
+      emit(TicketLoading());
+      try {
+        emit(TicketDetailL(await _s.updateStatut(e.id, e.statut,
+            solution: e.solution, currentUserId: _uid)));
+      } catch (err) { emit(TicketError(err.toString())); }
     });
-    
-    on<AffecterAgentTkt>((e, emit) async { 
-      emit(TicketLoading()); 
-      try { 
-        emit(TicketDetailL(await _s.affecterAgent(e.ticketId, e.agentId, currentUserId: _uid))); 
-      } catch (err) { 
-        emit(TicketError(err.toString())); 
-      } 
+
+    on<AffecterAgentTkt>((e, emit) async {
+      emit(TicketLoading());
+      try {
+        emit(TicketDetailL(await _s.affecterAgent(e.ticketId, e.agentId,
+            currentUserId: _uid)));
+      } catch (err) { emit(TicketError(err.toString())); }
     });
-    
-    // Modification essentielle ici : Pas de "emit(TicketLoading())" pour éviter que 
-    // tout l'écran du ticket disparaisse ou affiche un spinner au milieu de la discussion.
-    on<EnvoyerMessage>((e, emit) async { 
-      try { 
-        final updatedTicket = await _s.envoyerMessage(e.ticketId, e.message, currentUserId: _uid);
-        emit(TicketDetailL(updatedTicket)); 
-      } catch (err) { 
-        emit(TicketError(err.toString())); 
-      } 
+
+    // Pas de emit(TicketLoading()) ici pour ne pas faire disparaître la liste
+    // de messages pendant l'envoi
+    on<EnvoyerMessage>((e, emit) async {
+      try {
+        final updatedTicket = await _s.envoyerMessage(e.ticketId, e.message,
+            currentUserId: _uid);
+        emit(TicketDetailL(updatedTicket));
+      } catch (err) { emit(TicketError(err.toString())); }
     });
+  }
+
+  /// Appelé depuis _AppRouter quand l'état AuthOk est reçu.
+  /// Met à jour l'userId sans recréer le Bloc.
+  void updateUserId(String? userId) {
+    _uid = userId;
   }
 }
 // ════════════════════════════════════════════════════════════════════

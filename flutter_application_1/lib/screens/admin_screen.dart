@@ -103,8 +103,19 @@ class _UsersTab extends StatelessWidget {
             SnackBar(content: Text(state.msg), backgroundColor: AppColors.success),
           );
         } else if (state is AdminError) {
+          // --- ICI : GESTION PERSONNALISÉE DU 403 ---
+          final isForbidden = state.msg.contains("403") || state.msg.contains("Forbidden");
+          
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.msg), backgroundColor: AppColors.danger),
+            SnackBar(
+              content: Text(
+                isForbidden 
+                  ? "Vous n'êtes pas autorisé à effectuer cette action." 
+                  : state.msg
+              ),
+              backgroundColor: isForbidden ? Colors.orange : AppColors.danger,
+              behavior: SnackBarBehavior.floating, // Rendu plus moderne
+            ),
           );
         }
       },
@@ -140,7 +151,7 @@ class _UsersTab extends StatelessWidget {
               if (listUsers.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(child: Text('Aucun utilisateur trouvé dans PostgreSQL.')),
+                  child: Center(child: Text('Aucun utilisateur trouvé dans la base de donnée.')),
                 )
               else
                 AppCard(

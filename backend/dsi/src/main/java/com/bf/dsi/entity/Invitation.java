@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
+
 @Entity @Table(name = "invitation")
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class Invitation {
@@ -58,4 +59,35 @@ public class Invitation {
     protected void onCreate() {
         if (dateCreation == null) dateCreation = LocalDateTime.now();
     }
+    public StatutInvitation calculerStatutAutomatique() {
+    LocalDate aujourdhui = LocalDate.now();
+    boolean aDesAgents = this.getAffectations() != null && !this.getAffectations().isEmpty();
+    
+    // Cas 1 : La date de fin est dépassée
+    if (aujourdhui.isAfter(this.getDateFin())) {
+        if (aDesAgents) {
+            return StatutInvitation.TERMINEE;
+        } else {
+            return StatutInvitation.NON_TRAITEE;
+        }
+    }
+    
+    // Cas 2 : La date actuelle est dans l'intervalle [dateDebut, dateFin]
+    // (aujourdhui >= dateDebut ET aujourdhui <= dateFin)
+    if (!aujourdhui.isBefore(this.getDateDebut()) && !aujourdhui.isAfter(this.getDateFin())) {
+        return StatutInvitation.EN_COURS;
+    }
+    
+    // Cas 3 : La date actuelle est avant la date de début (Événement futur)
+    if (aujourdhui.isBefore(this.getDateDebut())) {
+        if (aDesAgents) {
+            return StatutInvitation.PLANIFIEE;
+        } else {
+            return StatutInvitation.EN_ATTENTE;
+        }
+    }
+    
+    // Par sécurité, on retourne le statut actuel par défaut
+    return this.getStatut();
+}
 }

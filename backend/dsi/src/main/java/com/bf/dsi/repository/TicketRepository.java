@@ -17,6 +17,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
         WHERE (:search IS NULL OR LOWER(CAST(t.description AS string)) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
         AND (:statut IS NULL OR t.statut = :statut)
         AND (:priorite IS NULL OR t.priorite = :priorite)
+        ORDER BY t.id DESC
         """)
     Page<Ticket> findAllFiltered(
         @Param("search") String search,

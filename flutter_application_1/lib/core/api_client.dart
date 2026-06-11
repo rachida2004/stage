@@ -189,13 +189,32 @@ class _JwtInterceptor extends Interceptor {
     
     handler.next(options);
   }
+@override
+ void onError(DioException err, ErrorInterceptorHandler handler) async {
+   final statusCode = err.response?.statusCode;
 
-  @override
-  void onError(DioException err, ErrorInterceptorHandler handler) async {
-    // Si l'API retourne un code 401 ou 403, la session a expiré ou est invalide
-    if (err.response?.statusCode == 403 || err.response?.statusCode == 401) {
-      await _storage.clearSession(); // Nettoyer les données locales (déconnexion)
-    }
-    handler.next(err);
-  }
+   if (statusCode == 401) {
+     await _storage.clearSession();
+     // Optionnel : Déclencher un événement de navigation globale ici
+     return handler.next(err); 
+   }
+
+   if (statusCode == 403) {
+     // AU LIEU DE LAISSER L'ERREUR BLOQUER L'INTERFACE :
+     // On peut choisir de "résoudre" l'erreur avec une réponse vide
+     // ou envoyer un message personnalisé via un contrôleur.
+     print("Accès refusé sur : ${err.requestOptions.path}");
+     
+     // Si vous voulez masquer le message rouge, 
+     // NE PAS faire handler.next(err) si vous gérez l'erreur ailleurs.
+     // Mais pour rester propre, on transmet une erreur spécifique :
+     return handler.reject(DioException(
+       requestOptions: err.requestOptions,
+       response: err.response,
+       error: "AUTHORIZATION_ERROR", // Message personnalisé
+     ));
+   }
+
+   handler.next(err);
+ }
 }
