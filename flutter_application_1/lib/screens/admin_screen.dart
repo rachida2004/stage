@@ -31,8 +31,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     return BlocProvider<AdminBloc>(
-      // CORRECTION DU SERVICE LOCATOR : La syntaxe sl<Type>() est maintenant 100% opérationnelle
-      create: (context) => AdminBloc(sl<AdminService>())..add(LoadUsers()),
+      // 💡 On charge la liste des utilisateurs ET les paramètres d'un coup à l'initialisation
+      create: (context) => AdminBloc(sl<AdminService>())
+        ..add(LoadUsers())
+        ..add(LoadSettings()),
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Administration'),
@@ -54,7 +56,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         floatingActionButton: BlocBuilder<AdminBloc, AdminState>(
           builder: (context, state) {
             return FloatingActionButton(
-              onPressed: () => _showAddUserSheet(context, context.read<AdminBloc>()),
+              onPressed: () => _showUserFormSheet(context, context.read<AdminBloc>()),
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               child: const Icon(Icons.person_add_outlined),
@@ -73,14 +75,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
-  void _showAddUserSheet(BuildContext context, AdminBloc adminBloc) {
+  void _showUserFormSheet(BuildContext context, AdminBloc adminBloc, {AppUser? user}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => BlocProvider.value(
         value: adminBloc,
-        child: const _AddUserSheet(),
+        child: _UserFormSheet(user: user),
       ),
       backgroundColor: Colors.white,
     );
@@ -103,7 +105,6 @@ class _UsersTab extends StatelessWidget {
             SnackBar(content: Text(state.msg), backgroundColor: AppColors.success),
           );
         } else if (state is AdminError) {
-          // --- ICI : GESTION PERSONNALISÉE DU 403 ---
           final isForbidden = state.msg.contains("403") || state.msg.contains("Forbidden");
           
           ScaffoldMessenger.of(context).showSnackBar(
@@ -114,13 +115,14 @@ class _UsersTab extends StatelessWidget {
                   : state.msg
               ),
               backgroundColor: isForbidden ? Colors.orange : AppColors.danger,
-              behavior: SnackBarBehavior.floating, // Rendu plus moderne
+              behavior: SnackBarBehavior.floating,
             ),
           );
         }
       },
       builder: (context, state) {
-        if (state is AdminLoading && state is! UsersLoaded) {
+        // 🛠️ FIX : On évite de bloquer l'écran si le chargement concerne uniquement les paramètres
+        if (state is AdminLoading && state is! UsersLoaded && state is! SettingsLoaded) {
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -135,7 +137,6 @@ class _UsersTab extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
-              // Stats Dynamiques
               Row(
                 children: [
                   Expanded(child: StatCard(value: '${listUsers.length}', label: 'Utilisateurs')),
@@ -148,10 +149,10 @@ class _UsersTab extends StatelessWidget {
               const SizedBox(height: 16),
               const SectionHeader(title: 'Liste des utilisateurs'),
               const SizedBox(height: 8),
-              if (listUsers.isEmpty)
+              if (listUsers.isEmpty && state is! AdminLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(child: Text('Aucun utilisateur trouvé dans la base de donnée.')),
+                  child: Center(child: Text('Aucun utilisateur trouvé dans la base de données.')),
                 )
               else
                 AppCard(
@@ -206,6 +207,9 @@ class _UserTile extends StatelessWidget {
                 onSelected: (action) {
                   if (action == 'toggle') {
                     context.read<AdminBloc>().add(ToggleUser(user.id));
+                  } else if (action == 'edit') {
+                    final adminScreenState = context.findAncestorStateOfType<_AdminScreenState>();
+                    adminScreenState?._showUserFormSheet(context, context.read<AdminBloc>(), user: user);
                   }
                 },
                 itemBuilder: (_) => [
@@ -281,7 +285,7 @@ class _RolesTab extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// SETTINGS TAB
+// SETTINGS TAB (DYNAMIQUE ET RÉACTIF)
 // ════════════════════════════════════════════════════════════════════
 
 class _SettingsTab extends StatelessWidget {
@@ -289,33 +293,177 @@ class _SettingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const SectionHeader(title: 'Notifications (Spring Boot Properties)'),
-        const SizedBox(height: 8),
-        AppCard(
-          child: Column(
-            children: const [
-              ToggleRow(label: 'Notifications par email', initial: true),
-              Divider(),
-              ToggleRow(label: 'Notifications internes', initial: true),
+    return BlocBuilder<AdminBloc, AdminState>(
+      builder: (context, state) {
+        if (state is AdminLoading && state is! SettingsLoaded) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        // Dictionnaire par défaut si l'API n'a pas encore répondu
+        Map<String, dynamic> currentSettings = {
+          "notificationsEmail": true,
+          "notificationsInternes": true,
+          "delaiMaxSansAffectation": "48h",
+          "langue": "Français"
+        };
+
+        if (state is SettingsLoaded) {
+          currentSettings = state.settings;
+        }
+
+        void updateSetting(String cle, dynamic nouvelleValeur) {
+          final nouveauxParametres = Map<String, dynamic>.from(currentSettings);
+          nouveauxParametres[cle] = nouvelleValeur;
+          
+          // 🎯 FIXÉ : Appel de l'événement exact "SaveSettings" défini dans ton bloc
+          context.read<AdminBloc>().add(SaveSettings(nouveauxParametres));
+        }
+
+        return RefreshIndicator(
+          onRefresh: () async => context.read<AdminBloc>().add(LoadSettings()),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              const SectionHeader(title: 'Notifications '),
+              const SizedBox(height: 8),
+              AppCard(
+                child: Column(
+                  children: [
+                    _ToggleRow(
+                      label: 'Notifications par email',
+                      value: currentSettings['notificationsEmail'] ?? true,
+                      onChanged: (val) => updateSetting('notificationsEmail', val),
+                    ),
+                    const Divider(),
+                    _ToggleRow(
+                      label: 'Notifications internes',
+                      value: currentSettings['notificationsInternes'] ?? true,
+                      onChanged: (val) => updateSetting('notificationsInternes', val),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const SectionHeader(title: 'Paramètres système'),
+              const SizedBox(height: 8),
+              AppCard(
+                child: Column(
+                  children: [
+                    _SettingRow(
+                      label: 'Délai max. sans affectation',
+                      value: currentSettings['delaiMaxSansAffectation'] ?? '48h',
+                      onTap: () => _showSelectionDialog(
+                        context,
+                        title: 'Délai max. sans affectation',
+                        options: ['12h', '24h', '48h', '72h'],
+                        currentValue: currentSettings['delaiMaxSansAffectation'] ?? '48h',
+                        onSelected: (val) => updateSetting('delaiMaxSansAffectation', val),
+                      ),
+                    ),
+                    const Divider(),
+                    _SettingRow(
+                      label: 'Langue de l\'interface',
+                      value: currentSettings['langue'] ?? 'Français',
+                      onTap: () => _showSelectionDialog(
+                        context,
+                        title: 'Langue de l\'interface',
+                        options: ['Français', 'English'],
+                        currentValue: currentSettings['langue'] ?? 'Français',
+                        onSelected: (val) => updateSetting('langue', val),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
-        const SectionHeader(title: 'Paramètres système'),
-        const SizedBox(height: 8),
-        AppCard(
-          child: Column(
-            children: const [
-              _SettingRow(label: 'Délai max. sans affectation', value: '48h'),
-              Divider(),
-              _SettingRow(label: 'Langue de l\'interface', value: 'Français'),
-            ],
+        );
+      },
+    );
+  }
+
+ void _showSelectionDialog(
+    BuildContext context, {
+    required String title,
+    required List<String> options,
+    required String currentValue,
+    required ValueChanged<String> onSelected,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white, // Garantit un fond blanc uni pour la boîte de dialogue
+        title: Text(
+          title, 
+          style: const TextStyle(
+            fontSize: 15, 
+            fontWeight: FontWeight.bold,
+            color: Colors.black87, // Titre en noir foncé
           ),
         ),
-      ],
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options.map((opt) {
+            final bool isSelected = opt == currentValue;
+            return RadioListTile<String>(
+              title: Text(
+                opt, 
+                style: TextStyle(
+                  fontSize: 13,
+                  // Si sélectionné, utilise la couleur primaire, sinon un noir/gris visible
+                  color: isSelected ? AppColors.primary : Colors.black87,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              value: opt,
+              groupValue: currentValue,
+              activeColor: AppColors.primary,
+              controlAffinity: ListTileControlAffinity.leading, // Aligne les boutons radio à gauche
+              onChanged: (val) {
+                if (val != null) {
+                  onSelected(val);
+                  Navigator.pop(context);
+                }
+              },
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _ToggleRow extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleRow({required this.label, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          // 🎯 FIX : Ajout de color: Colors.black87 pour rendre le libellé des interrupteurs lisible
+          Expanded(
+            child: Text(
+              label, 
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.black87, 
+              ),
+            ),
+          ),
+          Switch(
+            value: value,
+            activeColor: AppColors.primary,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -323,36 +471,43 @@ class _SettingsTab extends StatelessWidget {
 class _SettingRow extends StatelessWidget {
   final String label;
   final String value;
-  const _SettingRow({required this.label, required this.value});
+  final VoidCallback onTap;
+
+  const _SettingRow({required this.label, required this.value, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
-          Text(value, style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500)),
-          const SizedBox(width: 6),
-          const Icon(Icons.chevron_right, size: 16, color: Colors.black),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+            Text(value, style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500)),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right, size: 16, color: Colors.black54),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ════════════════════════════════════════════════════════════════════
-// ADD USER SHEET (FORMULAIRE SPRING BOOT)
+// FORMULAIRE UTILISATEUR (AJOUT / MODIFICATION)
 // ════════════════════════════════════════════════════════════════════
 
-class _AddUserSheet extends StatefulWidget {
-  const _AddUserSheet();
+class _UserFormSheet extends StatefulWidget {
+  final AppUser? user; 
+  const _UserFormSheet({this.user});
 
   @override
-  State<_AddUserSheet> createState() => _AddUserSheetState();
+  State<_UserFormSheet> createState() => _UserFormSheetState();
 }
 
-class _AddUserSheetState extends State<_AddUserSheet> {
+class _UserFormSheetState extends State<_UserFormSheet> {
   final _formKey = GlobalKey<FormState>();
   final _nomController = TextEditingController();
   final _prenomController = TextEditingController();
@@ -361,6 +516,22 @@ class _AddUserSheetState extends State<_AddUserSheet> {
   String? _selectedStructure;
   String? _selectedService;
   UserRole? _selectedRole;
+
+  bool get _isEditing => widget.user != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      final u = widget.user!;
+      _nomController.text = u.nom;
+      _prenomController.text = u.prenom ?? '';
+      _emailController.text = u.email;
+      _selectedStructure = u.structure;
+      _selectedService = u.service;
+      _selectedRole = u.role;
+    }
+  }
 
   @override
   void dispose() {
@@ -383,10 +554,15 @@ class _AddUserSheetState extends State<_AddUserSheet> {
         'structure': _selectedStructure,
         'service': _selectedService,
         'role': backendRoleValue,
-        'password': 'Password123!', 
       };
 
-      context.read<AdminBloc>().add(CreateUser(payload));
+      if (_isEditing) {
+        context.read<AdminBloc>().add(UpdateUser(widget.user!.id, payload));
+      } else {
+        payload['password'] = 'Password123!';
+        context.read<AdminBloc>().add(CreateUser(payload));
+      }
+      
       Navigator.pop(context);
     }
   }
@@ -405,7 +581,10 @@ class _AddUserSheetState extends State<_AddUserSheet> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(children: [
-                  const Text('Ajouter un utilisateur', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                  Text(
+                    _isEditing ? 'Modifier l\'utilisateur' : 'Ajouter un utilisateur', 
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
                   const Spacer(),
                   IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                 ]),
@@ -424,12 +603,14 @@ class _AddUserSheetState extends State<_AddUserSheet> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailController,
+                  enabled: !_isEditing, 
                   decoration: const InputDecoration(labelText: 'Adresse email', prefixIcon: Icon(Icons.mail_outline, size: 18)),
                   keyboardType: TextInputType.emailAddress,
                   validator: (v) => v == null || !v.contains('@') ? 'Email invalide' : null,
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
+                  value: _selectedStructure,
                   decoration: const InputDecoration(labelText: 'Structure', prefixIcon: Icon(Icons.domain, size: 18)),
                   items: ['Administratif', 'Financier', 'IT', 'Gestion matériel'].map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
                   onChanged: (v) => setState(() => _selectedStructure = v),
@@ -437,6 +618,7 @@ class _AddUserSheetState extends State<_AddUserSheet> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
+                  value: _selectedService,
                   decoration: const InputDecoration(labelText: 'Service', prefixIcon: Icon(Icons.miscellaneous_services, size: 18)),
                   items: ['Statistique', 'DMP', 'RH', 'BCMP'].map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
                   onChanged: (v) => setState(() => _selectedService = v),
@@ -444,6 +626,7 @@ class _AddUserSheetState extends State<_AddUserSheet> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<UserRole>(
+                  value: _selectedRole,
                   decoration: const InputDecoration(labelText: 'Rôle', prefixIcon: Icon(Icons.text_fields_outlined, size: 18)),
                   items: UserRole.values.map((role) => DropdownMenuItem(
                     value: role, 
@@ -455,7 +638,7 @@ class _AddUserSheetState extends State<_AddUserSheet> {
                 const SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: _submit, 
-                  child: const Text('Créer l\'utilisateur'),
+                  child: Text(_isEditing ? 'Enregistrer les modifications' : 'Créer l\'utilisateur'),
                 ),
               ],
             ),

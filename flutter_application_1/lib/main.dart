@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-// Ajouter cet import pour gérer la traduction en français
 import 'package:flutter_localizations/flutter_localizations.dart'; 
 import 'theme/app_theme.dart';
 import 'screens/login_screen.dart';
@@ -23,32 +22,47 @@ class DSIApp extends StatelessWidget {
         BlocProvider(create: (_) => AuthBloc(sl.auth)..add(CheckAuth())),
         BlocProvider(create: (_) => DashboardBloc(sl.dashboard)),
         BlocProvider(create: (_) => InvitationBloc(sl.invitations)),
-        // userId non disponible au démarrage — updateUserId() est appelé dès AuthOk
         BlocProvider(create: (_) => TicketBloc(sl.tickets)),
         BlocProvider(create: (_) => NotifBloc(sl.notifications)),
-        BlocProvider(create: (_) => AdminBloc(sl.admin)),
+        // Chargement initial des paramètres pour récupérer la langue sauvegardée
+        BlocProvider(create: (_) => AdminBloc(sl.admin)..add(LoadSettings())), 
       ],
-      child: MaterialApp(
-        title: 'DSI Connect',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
-        
-        // --- AJOUTS POUR LE FRANÇAIS ---
-        supportedLocales: const [
-          Locale('fr', 'FR'),
-          Locale('en', 'US'),
-        ],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        locale: const Locale('fr', 'FR'), // Force l'application en français
-        // -------------------------------
+      // BlocBuilder pour reconstruire la MaterialApp quand la langue change
+      child: BlocBuilder<AdminBloc, AdminState>(
+        builder: (context, state) {
+          // Détermination dynamique de la locale
+          Locale currentLocale = const Locale('fr', 'FR');
+          
+          if (state is SettingsLoaded && state.settings.containsKey('langue')) {
+            final lang = state.settings['langue'];
+            currentLocale = (lang == 'English') 
+                ? const Locale('en', 'US') 
+                : const Locale('fr', 'FR');
+          }
 
-        home: const _AppRouter(),
+          return MaterialApp(
+            title: 'DSI Connect',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: ThemeMode.system,
+            
+            // Locale dynamique
+            locale: currentLocale, 
+            
+            supportedLocales: const [
+              Locale('fr', 'FR'),
+              Locale('en', 'US'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            
+            home: const _AppRouter(),
+          );
+        },
       ),
     );
   }

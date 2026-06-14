@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-// ════════════════════════════════════════════════════════════════════
+/// ════════════════════════════════════════════════════════════════════
 // INVITATION MODELE
 // ════════════════════════════════════════════════════════════════════
 
@@ -40,7 +40,7 @@ extension InvitationStatusExt on InvitationStatus {
 }
 
 class Invitation {
-  final String id; // Gère les formats numériques ou UUID de PostgreSQL
+  final String id;
   final String objet;
   final String structureEmettrice;
   final DateTime dateDebut;
@@ -67,19 +67,23 @@ class Invitation {
   });
 
   factory Invitation.fromJson(Map<String, dynamic> j) => Invitation(
-    id:                 j['id']?.toString() ?? '',
-    objet:              j['objet'] ?? '',
-    structureEmettrice: j['structureEmettrice'] ?? '',
-    // ✅ CORRECTION : Sécurisation du parsing des dates pour éviter un crash si le format change
-    dateDebut:          j['dateDebut'] != null ? (DateTime.tryParse(j['dateDebut'].toString()) ?? DateTime.now()) : DateTime.now(),
-    dateFin:            j['dateFin'] != null ? (DateTime.tryParse(j['dateFin'].toString()) ?? DateTime.now()) : DateTime.now(),
-    nombreParticipants: j['nombreParticipants'] ?? 0,
-    lieu:               j['lieu'],
-    description:        j['description'],
-    status:             InvitationStatusExt.fromApi(j['status']),
+    id:                   j['id']?.toString() ?? '',
+    objet:                j['objet'] ?? '',
+    
+    // ✅ CORRECTION : Lecture prioritaire de 'nomStructure' envoyée par le formulaire
+    structureEmettrice:   j['nomStructure'] ?? j['structureEmettrice'] ?? 'Non spécifiée',
+    
+    dateDebut:            j['dateDebut'] != null ? (DateTime.tryParse(j['dateDebut'].toString()) ?? DateTime.now()) : DateTime.now(),
+    dateFin:              j['dateFin'] != null ? (DateTime.tryParse(j['dateFin'].toString()) ?? DateTime.now()) : DateTime.now(),
+    nombreParticipants:   j['nombreParticipants'] ?? 0,
+    
+    // ✅ CORRECTION : Valeur par défaut si lieu est absent ou vide
+    lieu:                 (j['lieu'] != null && j['lieu'].toString().isNotEmpty) ? j['lieu'] : 'Non précisé',
+    
+    description:          j['description'],
+    status:               InvitationStatusExt.fromApi(j['status']),
     agentsAffectes: (j['agentsAffectes'] as List<dynamic>? ?? [])
         .map((e) => AppUser.fromJson(e)).toList(),
-    // ✅ CORRECTION CRITIQUE : Extrait l'URL de l'objet pièce jointe (Map) au lieu de faire un .toString() brut
     files: (j['files'] as List<dynamic>? ?? j['piecesJointes'] as List<dynamic>? ?? [])
         .map((e) {
           if (e is Map) {
@@ -371,7 +375,7 @@ class AppUser {
       role: UserRoleExt.fromApi(roleStr),
       initiales: j['initiales'] ?? _computeInitiales(j['nom'], j['prenom']),
       // Tolère 'actif' (venant de la table PG) ou 'active'
-      active: j['actif'] ?? j['active'] ?? j['isActive'] ?? true, 
+     active: (j['actif'] == true) || (j['active'] == true) || (j['isActive'] == true),
       structure: j['structure'],
       service: j['service'],
     );

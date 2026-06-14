@@ -66,8 +66,10 @@ public class InvitationController {
             .visibilite(req.getVisibilite() != null ? req.getVisibilite() : "PUBLIC")
             .statut(StatutInvitation.EN_ATTENTE)
             .build();
+            
         if (req.getStructureEmettriceId() != null)
             structureRepo.findById(req.getStructureEmettriceId()).ifPresent(inv::setStructureEmettrice);
+            
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(invitationRepo.save(inv)));
     }
 
@@ -79,24 +81,18 @@ public class InvitationController {
             @RequestParam(required = false, defaultValue = "0") int nombreParticipants,
             @RequestParam(required = false) String visibilite,
             @RequestParam(required = false) Long structureEmettriceId,
+            @RequestParam(required = false) String nomStructure,
+            @RequestParam(required = false) String lieu,
             @RequestParam(required = false) List<MultipartFile> files) {
 
         LocalDate parsedDateDebut = null;
         if (dateDebut != null && !dateDebut.trim().isEmpty()) {
-            try {
-                parsedDateDebut = LocalDate.parse(dateDebut.trim());
-            } catch (java.time.format.DateTimeParseException e) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Format de dateDebut invalide. Attendu: YYYY-MM-DD"));
-            }
+            parsedDateDebut = LocalDate.parse(dateDebut.trim());
         }
 
         LocalDate parsedDateFin = null;
         if (dateFin != null && !dateFin.trim().isEmpty()) {
-            try {
-                parsedDateFin = LocalDate.parse(dateFin.trim());
-            } catch (java.time.format.DateTimeParseException e) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Format de dateFin invalide. Attendu: YYYY-MM-DD"));
-            }
+            parsedDateFin = LocalDate.parse(dateFin.trim());
         }
 
         Invitation inv = Invitation.builder()
@@ -105,18 +101,28 @@ public class InvitationController {
             .dateFin(parsedDateFin)
             .nombreParticipant(nombreParticipants)
             .visibilite(visibilite != null ? visibilite : "PUBLIC")
+            .lieu(lieu)
             .statut(StatutInvitation.EN_ATTENTE)
             .build();
 
-        if (structureEmettriceId != null)
+        // Gestion de la structure : ID prioritaire, sinon recherche/création par nom
+        if (structureEmettriceId != null) {
             structureRepo.findById(structureEmettriceId).ifPresent(inv::setStructureEmettrice);
+        } else if (nomStructure != null && !nomStructure.trim().isEmpty()) {
+            Structure structure = structureRepo.findByNom(nomStructure)
+                .orElseGet(() -> {
+                    Structure s = new Structure();
+                    s.setNom(nomStructure);
+                    return structureRepo.save(s);
+                });
+            inv.setStructureEmettrice(structure);
+        }
 
         Invitation saved = invitationRepo.save(inv);
 
         if (files != null) {
             for (MultipartFile file : files) {
                 if (!file.isEmpty()) {
-                    // Le service stocke et retourne le chemin relatif (ex: "invitations/14/nom.pdf")
                     String path = fileStorage.store(file, "invitations/" + saved.getId());
                     PieceJointeInvitation pj = PieceJointeInvitation.builder()
                         .nom(file.getOriginalFilename())
@@ -127,7 +133,6 @@ public class InvitationController {
                     saved.getPiecesJointes().add(pj);
                 }
             }
-            // Sauvegarde finale de l'entité avec ses cascades configurées
             invitationRepo.save(saved);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
@@ -159,14 +164,8 @@ public class InvitationController {
     }
 
     @PostMapping("/{invId}/affecter")
-    public ResponseEntity<?> affecterMembres(
-            @PathVariable Long invId,
-            @RequestBody AffectationRequest req) {
-        Invitation invMiseAJour = invitationService.affecterMembres(
-            invId, 
-            req.getAgentIds(), 
-            req.getResponsableId()
-        );
+    public ResponseEntity<?> affecterMembres(@PathVariable Long invId, @RequestBody AffectationRequest req) {
+        Invitation invMiseAJour = invitationService.affecterMembres(invId, req.getAgentIds(), req.getResponsableId());
         return ResponseEntity.ok(toDto(invMiseAJour));
     }
 
@@ -174,20 +173,14 @@ public class InvitationController {
     public ResponseEntity<byte[]> exportPdf(@PathVariable Long id) {
         Invitation inv = invitationRepo.findById(id).orElseThrow();
         byte[] pdf = pdfService.generateInvitationLetter(inv);
-        return ResponseEntity.ok()
-            .header("Content-Disposition", "attachment; filename=\"invitation_" + id + ".pdf\"")
-            .contentType(MediaType.APPLICATION_PDF).body(pdf);
+        return ResponseEntity.ok().header("Content-Disposition", "attachment; filename=\"invitation_" + id + ".pdf\"").contentType(MediaType.APPLICATION_PDF).body(pdf);
     }
 
     @GetMapping("/{id}/export/word")
     public ResponseEntity<byte[]> exportWord(@PathVariable Long id) {
-        Invitation inv = invitationRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Invitation introuvable avec l'ID : " + id));
+        Invitation inv = invitationRepo.findById(id).orElseThrow();
         byte[] wordDocument = wordService.generateInvitationWord(inv); 
-        return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invitation_" + id + ".docx\"")
-            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-            .body(wordDocument);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invitation_" + id + ".docx\"").contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document")).body(wordDocument);
     }
 
     @DeleteMapping("/{id}")
@@ -211,16 +204,19 @@ public class InvitationController {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", i.getId());
         m.put("objet", i.getObjet());
+        m.put("lieu", i.getLieu() != null ? i.getLieu() : "Non précisé");
         m.put("dateDebut", i.getDateDebut());
         m.put("dateFin", i.getDateFin());
         m.put("nombreParticipants", i.getNombreParticipant());
-        
-        // ✅ CORRECTION : Remplacement de "status" par "status" (sans 'e') pour correspondre à l'UI Flutter
         m.put("status", i.calculerStatutAutomatique() != null ? i.calculerStatutAutomatique().name() : "EN_ATTENTE");
-        
         m.put("visibilite", i.getVisibilite());
         m.put("dateCreation", i.getDateCreation());
-        m.put("structureEmettrice", i.getStructureEmettrice() != null ? i.getStructureEmettrice().getNom() : "");
+        
+        // Retourne le nom ou "Non spécifiée"
+        m.put("structureEmettrice", (i.getStructureEmettrice() != null && i.getStructureEmettrice().getNom() != null) 
+                                     ? i.getStructureEmettrice().getNom() 
+                                     : "Non spécifiée");
+        
         m.put("agentsAffectes", i.getAffectations().stream().map(a -> Map.of(
             "id", a.getAgent().getUserId(),
             "nom", a.getAgent().getNom(),
@@ -230,12 +226,11 @@ public class InvitationController {
             "responsable", a.getResponsablePrincipal()
         )).toList());
         
-        // ✅ OPTIMISATION : Uniformisation du chemin d'accès aux fichiers statiques téléchargés
         m.put("piecesJointes", i.getPiecesJointes().stream().map(pj -> Map.of(
             "id", pj.getId(), 
             "nom", pj.getNom(),
             "type", pj.getType() != null ? pj.getType() : "",
-            "url", pj.getChemin().startsWith("/") ? pj.getChemin() : "/" + pj.getChemin()
+            "url", pj.getChemin() != null && pj.getChemin().startsWith("/") ? pj.getChemin() : "/" + (pj.getChemin() != null ? pj.getChemin() : "")
         )).toList());
         
         return m;

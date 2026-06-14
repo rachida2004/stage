@@ -86,4 +86,18 @@ class StorageService {
   Future<String?> get userRole  => _read(StorageKeys.userRole);
   Future<String?> get initiales => _read(StorageKeys.initiales);
   Future<String?> get token     => _read(StorageKeys.accessToken);
+  // 🎯 Ajout des méthodes publiques pour gérer les clés génériques (ex: Paramètres)
+  Future<void> write(String key, String value) async {
+    await _write(key, value);
+  }
+
+Future<void> loadCache() async {
+  _cachedUserId = await _read(StorageKeys.userId);
+  _cachedUserNom = await _read(StorageKeys.userNom);
+  _cachedUserRole = await _read(StorageKeys.userRole);
+  _cachedInitiales = await _read(StorageKeys.initiales);
+}
+  Future<String?> read(String key) async {
+    return await _read(key);
+  }
 }

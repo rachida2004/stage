@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:dio/dio.dart';
 import '../core/api_constants.dart';
 import '../core/api_client.dart';
 import '../models/models.dart';
 import 'storage_service.dart';
+
+// ════════════════════════════════════════════════════════════════════
+// SERVICE LOCATOR (SL)
+// ════════════════════════════════════════════════════════════════════
 
 class SL {
   SL._();
@@ -52,7 +56,7 @@ class SL {
 SL get sl => SL.instance;
 
 // ════════════════════════════════════════════════════════════════════
-// INVITATION SERVICE (MIS À JOUR)
+// INVITATION SERVICE
 // ════════════════════════════════════════════════════════════════════
 
 class InvitationService {
@@ -82,23 +86,28 @@ class InvitationService {
     try {
       final Map<String, dynamic> payload = {};
 
-      // 1. On met à plat les paramètres simples
-payload['objet'] = data['objet'] ?? '';
-payload['nombreParticipants'] = data['nombreParticipants'] ?? 0;
-payload['visibilite'] = data['visibilite'] ?? 'PUBLIC';
+      payload['objet'] = data['objet'] ?? '';
+      payload['nombreParticipants'] = data['nombreParticipants'] ?? 0;
+      payload['visibilite'] = data['visibilite'] ?? 'PUBLIC';
+      
+      // ✅ AJOUTS CRUCIAUX : Transmission du lieu et de la structure
+      payload['lieu'] = data['lieu'] ?? '';
+      
+      if (data['nomStructure'] != null && data['nomStructure'].toString().isNotEmpty) {
+        payload['nomStructure'] = data['nomStructure'];
+      }
 
-// N'envoie la clé QUE si la date est réellement renseignée et non vide
-if (data['dateDebut'] != null && data['dateDebut'].toString().isNotEmpty) {
-  payload['dateDebut'] = data['dateDebut'];
-}
-if (data['dateFin'] != null && data['dateFin'].toString().isNotEmpty) {
-  payload['dateFin'] = data['dateFin'];
-}
+      if (data['dateDebut'] != null && data['dateDebut'].toString().isNotEmpty) {
+        payload['dateDebut'] = data['dateDebut'];
+      }
+      if (data['dateFin'] != null && data['dateFin'].toString().isNotEmpty) {
+        payload['dateFin'] = data['dateFin'];
+      }
 
-if (data['structureEmettriceId'] != null) {
-  payload['structureEmettriceId'] = data['structureEmettriceId'];
-}
-      // 2. On gère les fichiers en respectant scrupuleusement la clé 'files' au pluriel
+      if (data['structureEmettriceId'] != null) {
+        payload['structureEmettriceId'] = data['structureEmettriceId'];
+      }
+
       if (fileBytes.isNotEmpty) {
         final List<MultipartFile> multipartFiles = [];
         for (final file in fileBytes) {
@@ -109,7 +118,6 @@ if (data['structureEmettriceId'] != null) {
             ),
           );
         }
-        // Spring Boot recevra une List<MultipartFile> via la clé "files"
         payload['files'] = multipartFiles;
       }
 
@@ -140,23 +148,27 @@ if (data['structureEmettriceId'] != null) {
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  /// Affecte une liste d'agents à une invitation en un seul appel batch.
-  /// Le backend crée les affectations ET les notifications automatiquement.
-  /// POST /api/invitations/{invId}/affecter  body: { agentIds: [...], responsableId: ... }
   Future<Invitation> affecterAgents(String invId, List<String> agentIds, {String? responsableId}) async {
     try {
+      final List<int> parsedAgentIds = agentIds
+          .map((id) => int.tryParse(id))
+          .where((id) => id != null)
+          .cast<int>()
+          .toList();
+
+      final int? parsedResponsableId = responsableId != null ? int.tryParse(responsableId) : null;
+
       final res = await _api.dio.post(
         '${ApiConstants.invitations}/$invId/affecter',
         data: {
-          'agentIds': agentIds.map((id) => int.tryParse(id) ?? id).toList(),
-          'responsableId': responsableId != null ? (int.tryParse(responsableId) ?? responsableId) : null,
+          'agentIds': parsedAgentIds,
+          'responsableId': parsedResponsableId,
         },
       );
       return Invitation.fromJson(res.data);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 }
-
 // ════════════════════════════════════════════════════════════════════
 // TICKET SERVICE
 // ════════════════════════════════════════════════════════════════════
@@ -252,7 +264,7 @@ class TicketService {
 class AuthService {
   final ApiClient _api;
   final StorageService _storage;
-  AuthService(this._api, this._storage);
+   AuthService(this._api, this._storage);
 
   Future<AuthResponse> login(String email, String password) async {
     try {
@@ -297,8 +309,6 @@ class AuthService {
     on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  /// Étape 2 — Soumet le code reçu par email + le nouveau mot de passe.
-  /// POST /api/auth/reinitialiser-mot-de-passe
   Future<void> resetPassword(String code, String nouveauMotDePasse) async {
     try {
       await _api.dio.post(
@@ -314,7 +324,7 @@ class AuthService {
   Future<String?> get currentInitiales  => _storage.initiales;
 }
 
-// getagent ══
+// ════════════════════════════════════════════════════════════════════
 // DASHBOARD SERVICE
 // ════════════════════════════════════════════════════════════════════
 
@@ -395,11 +405,10 @@ class NotificationService {
       return res.data['count'] ?? 0;
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
-
 }
 
 // ════════════════════════════════════════════════════════════════════
-// ADMIN SERVICE
+// ADMIN SERVICE (OPTIMISÉ ET SÉCURISÉ)
 // ════════════════════════════════════════════════════════════════════
 
 class AdminService {
@@ -410,14 +419,28 @@ class AdminService {
     try {
       final res = await _api.dio.get(ApiConstants.adminUsers);
       final data = res.data;
+      
+      List<dynamic> rawUsers = [];
+      
       if (data is Map && data.containsKey('content')) {
-        return (data['content'] as List).map((u) => AppUser.fromJson(u)).toList();
+        rawUsers = data['content'] as List;
+      } else if (data is List) {
+        rawUsers = data;
       }
-      if (data is List) {
-        return data.map((u) => AppUser.fromJson(u)).toList();
-      }
-      return [];
-    } on DioException catch (e) { throw ApiException.fromDio(e); }
+
+      // 🎯 Sécurisation du mapping pour éviter qu'un seul champ mal formé ou null ne bloque l'affichage global
+      return rawUsers.map((u) {
+        try {
+          return AppUser.fromJson(u);
+        } catch (e) {
+          debugPrint("Erreur de parsing sur un utilisateur spécifique: $e JSON: $u");
+          return null;
+        }
+      }).whereType<AppUser>().toList();
+
+    } on DioException catch (e) { 
+      throw ApiException.fromDio(e); 
+    }
   }
 
   Future<AppUser> createUser(Map<String, dynamic> data) async {
@@ -426,8 +449,10 @@ class AdminService {
   }
 
   Future<AppUser> updateUser(String id, Map<String, dynamic> data) async {
-    try { return AppUser.fromJson((await _api.dio.put('${ApiConstants.users}/$id', data: data)).data); }
-    on DioException catch (e) { throw ApiException.fromDio(e); }
+    try { 
+      final res = await _api.dio.put('${ApiConstants.adminUsers}/$id', data: data);
+      return AppUser.fromJson(res.data); 
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
   Future<void> toggleUser(String id) async {
@@ -435,16 +460,11 @@ class AdminService {
     on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  // ════════════════════════════════════════════════════════════════════
-  // METHODE GET AGENTS OPTIMISÉE
-  // ════════════════════════════════════════════════════════════════════
   Future<List<AppUser>> getAgents() async {
     try {
-      // 1. On tente d'abord l'appel standard configuré sur ton backend
       final res = await _api.dio.get('/api/agents');
       final data = res.data;
       
-      // On extrait la liste proprement, que ce soit un tableau direct ou paginé
       List<dynamic> rawList = [];
       if (data is List) {
         rawList = data;
@@ -452,14 +472,12 @@ class AdminService {
         rawList = data['content'] as List;
       }
 
-      // On filtre directement ici pour ne renvoyer QUE les utilisateurs actifs
       return rawList
           .map((u) => AppUser.fromJson(u))
           .where((user) => user.isActive)
           .toList();
 
     } on DioException catch (e) {
-      // Sécurité : Si le préfixe globale engendre une erreur 404 (ex: base URL inclut déjà /api)
       if (e.response?.statusCode == 404) {
         try {
           final fallbackRes = await _api.dio.get('/agents');
@@ -482,8 +500,34 @@ class AdminService {
     }
   }
 
-  Future<Map<String, dynamic>> getSettings() async => {};
-  Future<void> saveSettings(Map<String, dynamic> data) async {}
+  // 🎯 PERSISTANCE : Utilisation des méthodes publiques read() et write() de StorageService
+  Future<Map<String, dynamic>> getSettings() async {
+    try {
+      final res = await _api.dio.get('/api/admin/settings');
+      final Map<String, dynamic> remote = Map<String, dynamic>.from(res.data);
+      final storage = SL.instance.storage;
+      remote.forEach((k, v) => storage.write('settings_$k', v.toString()));
+      return remote;
+    } catch (e) {
+      final s = SL.instance.storage;
+      return {
+        'notificationsEmail': (await s.read('settings_notificationsEmail')) != 'false',
+        'notificationsInternes': (await s.read('settings_notificationsInternes')) != 'false',
+        'delaiMaxSansAffectation': await s.read('settings_delaiMaxSansAffectation') ?? '48h',
+        'langue': await s.read('settings_langue') ?? 'Français'
+      };
+    }
+  }
+
+  Future<void> saveSettings(Map<String, dynamic> data) async {
+    try {
+      await _api.dio.post('/api/admin/settings', data: data);
+      final storage = SL.instance.storage;
+      for (var e in data.entries) {
+        await storage.write('settings_${e.key}', e.value.toString());
+      }
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
 }
 // ════════════════════════════════════════════════════════════════════
 // API EXCEPTION

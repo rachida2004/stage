@@ -366,7 +366,7 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
 
   void _submit() {
     if (_objetCtrl.text.trim().isEmpty ||
-        _structCtrl.text.trim().isEmpty ||
+        _structCtrl.text.trim().isEmpty || // Vérifie que la structure est saisie
         _dateDebut == null ||
         _dateFin == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -383,14 +383,13 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
     context.read<InvitationBloc>().add(CreateInvitation(
       {
         'objet': _objetCtrl.text.trim(),
-        'structureEmettrice': _structCtrl.text.trim(),
+        'nomStructure': _structCtrl.text.trim(), // 👈 MODIFIÉ : "nomStructure" au lieu de "structureEmettrice"
+        'lieu': _lieuCtrl.text.trim(),           // 👈 MODIFIÉ : Envoi explicite du lieu
         'dateDebut':
             '${_dateDebut!.year}-${_dateDebut!.month.toString().padLeft(2, '0')}-${_dateDebut!.day.toString().padLeft(2, '0')}',
         'dateFin':
             '${_dateFin!.year}-${_dateFin!.month.toString().padLeft(2, '0')}-${_dateFin!.day.toString().padLeft(2, '0')}',
-        if (_lieuCtrl.text.trim().isNotEmpty) 'lieu': _lieuCtrl.text.trim(),
-        if (_nbCtrl.text.trim().isNotEmpty)
-          'nombreParticipants': int.tryParse(_nbCtrl.text.trim()) ?? 0,
+        'nombreParticipants': int.tryParse(_nbCtrl.text.trim()) ?? 0, // 👈 MODIFIÉ : Suppression du 'if', envoi systématique
       },
       filePaths: const [],
       fileBytes: fileBytes,
@@ -398,7 +397,6 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
 
     Navigator.pop(context);
   }
-
   @override
   Widget build(BuildContext context) {
     return BlocListener<InvitationBloc, InvitationState>(

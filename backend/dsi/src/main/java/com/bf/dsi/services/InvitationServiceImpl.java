@@ -8,6 +8,7 @@ import com.bf.dsi.repository.AffectationInvitationRepository;
 import com.bf.dsi.repository.InvitationRepository;
 import com.bf.dsi.repository.NotificationRepository;
 import com.bf.dsi.repository.UtilisateurRepository;
+import com.bf.dsi.services.AppSettingService; // 🎯 1. Importation du service de configuration
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class InvitationServiceImpl implements InvitationService {
     private final AffectationInvitationRepository affectationRepo;
     private final UtilisateurRepository utilisateurRepo;
     private final NotificationRepository notificationRepo;
+    private final AppSettingService appSettingService; // 🎯 2. Injection automatique grâce à @RequiredArgsConstructor
 
     @Override
     public Invitation affecterMembres(Long invId, List<Long> agentIds, Long responsableId) {
@@ -58,24 +60,33 @@ public class InvitationServiceImpl implements InvitationService {
                 affectationRepo.save(aff);
                 inv.getAffectations().add(aff);
 
-                String messageNotif = estResponsable 
-                    ? "⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : " + inv.getObjet()
-                    : "Vous avez été affecté à l'invitation : " + inv.getObjet();
+                // 🎯 3. Condition : On vérifie si l'admin a coché "Notifications internes"
+                if (appSettingService.isInternalNotificationEnabled()) {
+                    String messageNotif = estResponsable 
+                        ? "⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : " + inv.getObjet()
+                        : "Vous avez été affecté à l'invitation : " + inv.getObjet();
 
-                Notification notif = Notification.builder()
-                    .message(messageNotif)
-                    .categorie("INVITATION")
-                    .actionLabel("Voir")
-                    .resourceId(invId.toString())
-                    .utilisateur(agent)
-                    .build();
-                
-                notificationRepo.save(notif);
+                    Notification notif = Notification.builder()
+                        .message(messageNotif)
+                        .categorie("INVITATION")
+                        .actionLabel("Voir")
+                        .resourceId(invId.toString())
+                        .utilisateur(agent)
+                        .build();
+                    
+                    notificationRepo.save(notif);
+                }
+
+                // 🎯 4. Condition : On vérifie si l'admin a coché "Notifications par email"
+                if (appSettingService.isEmailNotificationEnabled()) {
+                    // Si tu branches ton service mail plus tard, le déclenchement se fera ici
+                    // emailService.sendInvitationMail(agent, inv, estResponsable);
+                    System.out.println("LOG EMAIL : Notification par courriel pour l'agent ID " + agentId);
+                }
             }
         }
 
         // 4. Utilisation directe de la méthode de ton entité
-        // Elle compare correctement des objets LocalDate et renvoie le bon type Enum (StatutInvitation)
         inv.setStatut(inv.calculerStatutAutomatique());
         
         // 5. Sauvegarde finale

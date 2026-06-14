@@ -16,6 +16,9 @@ public class Invitation {
 
     @Column(name = "objet", columnDefinition = "TEXT")
     private String objet;
+    
+@Column(name = "lieu")
+    private String lieu;
 
     @Column(name = "date_debut", nullable = false)
     private LocalDate dateDebut;
