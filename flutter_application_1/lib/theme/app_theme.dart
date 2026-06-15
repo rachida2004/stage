@@ -110,7 +110,7 @@ class AppTheme {
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color.fromARGB(255, 37, 235, 93),// couleur bouton connexion
+        backgroundColor: const Color.fromARGB(255, 5, 77, 25),// couleur bouton connexion
         foregroundColor: Colors.white,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -163,7 +163,7 @@ class AppTheme {
     ),
     scaffoldBackgroundColor: const Color.fromARGB(255, 236, 239, 246),
     appBarTheme: const AppBarTheme(
-      backgroundColor: Color.fromARGB(173, 0, 241, 72),//bar en haut
+      backgroundColor: Color.fromARGB(214, 6, 77, 27),//bar en haut
       foregroundColor: AppColors.darkText,
       elevation: 0,
       shadowColor: Color.fromARGB(223, 37, 34, 34),

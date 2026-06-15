@@ -1,5 +1,50 @@
 import 'dart:convert';
+class Structure {
+  final int? id; // Remplacé Long par int
+  final String nom;
+  final String? adresse;
+  final String? telephone;
+  final String? email;
 
+  Structure({this.id, required this.nom, this.adresse, this.telephone, this.email});
+
+  factory Structure.fromJson(Map<String, dynamic> json) {
+    return Structure(
+      id: json['id'] != null ? (json['id'] as num).toInt() : null,
+      nom: json['nom'] ?? '',
+      adresse: json['adresse'],
+      telephone: json['telephone'],
+      email: json['email'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'nom': nom,
+      'adresse': adresse,
+      'telephone': telephone,
+      'email': email,
+    };
+  }
+}
+class Service {
+  final int? id;
+  final String nom;
+  final String? description;
+  final Structure? structure; // Objet complet ou ID selon votre implémentation
+
+  Service({this.id, required this.nom, this.description, this.structure});
+
+  factory Service.fromJson(Map<String, dynamic> json) {
+    return Service(
+      id: json['id'] != null ? (json['id'] as num).toInt() : null,
+      nom: json['nom'] ?? '',
+      description: json['description'],
+      structure: json['structure'] != null ? Structure.fromJson(json['structure']) : null,
+    );
+  }
+}
 /// ════════════════════════════════════════════════════════════════════
 // INVITATION MODELE
 // ════════════════════════════════════════════════════════════════════

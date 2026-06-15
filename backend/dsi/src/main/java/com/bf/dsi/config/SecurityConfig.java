@@ -2,6 +2,7 @@ package com.bf.dsi.config;
 
 import com.bf.dsi.security.JwtFilter;
 import org.springframework.context.annotation.*;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.*;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -62,7 +63,9 @@ public class SecurityConfig {
                 
                 // Notifications — accessibles à tous les authentifiés
                 .requestMatchers("/api/notifications/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
-                
+                .requestMatchers(HttpMethod.GET, "/api/services").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/services/**").permitAll()
+      .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/structures").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
