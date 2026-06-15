@@ -170,7 +170,10 @@ class InvitationBloc extends Bloc<InvitationEvent, InvitationState> {
       emit(InvitationLoading());
       try {
         await _s.create(e.data, fileBytes: e.fileBytes);
+        
         emit(InvitationSuccess('Invitation créée'));
+        final nouvellePage = await _s.getAll(page: 0);
+        emit(InvitationsLoaded(nouvellePage));
       } catch (err) { emit(InvitationError(err.toString())); }
     });
     on<UpdateInvitation>((e, emit) async { emit(InvitationLoading()); try { await _s.update(e.id, e.data); emit(InvitationSuccess('Invitation mise à jour')); } catch (err) { emit(InvitationError(err.toString())); } });
@@ -360,33 +363,171 @@ class NotifBloc extends Bloc<NotifEvent, NotifState> {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// ADMIN EVENTS
+// ════════════════════════════════════════════════════════════════════
+
+abstract class AdminEvent extends Equatable { 
+  @override 
+  List<Object?> get props => []; 
+}
+
+class LoadUsers extends AdminEvent {}
+
+class CreateUser extends AdminEvent { 
+  final Map<String, dynamic> data; 
+  CreateUser(this.data); 
+  @override 
+  List<Object?> get props => [data]; 
+}
+
+class UpdateUser extends AdminEvent { 
+  final String id; 
+  final Map<String, dynamic> data; 
+  UpdateUser(this.id, this.data); 
+  @override 
+  List<Object?> get props => [id, data]; 
+}
+
+class ToggleUser extends AdminEvent { 
+  final String id; 
+  ToggleUser(this.id); 
+  @override 
+  List<Object?> get props => [id]; 
+}
+
+class LoadSettings extends AdminEvent {}
+
+class SaveSettings extends AdminEvent { 
+  final Map<String, dynamic> data; 
+  SaveSettings(this.data); 
+  @override 
+  List<Object?> get props => [data]; 
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ADMIN STATES
+// ════════════════════════════════════════════════════════════════════
+
+abstract class AdminState extends Equatable { 
+  @override 
+  List<Object?> get props => []; 
+}
+
+class AdminInitial extends AdminState {}
+
+class AdminLoading extends AdminState {}
+
+class UsersLoaded extends AdminState { 
+  final List<AppUser> users; 
+  UsersLoaded(this.users); 
+  @override 
+  List<Object?> get props => [users]; 
+}
+
+class SettingsLoaded extends AdminState { 
+  final Map<String, dynamic> settings; 
+  SettingsLoaded(this.settings); 
+  @override 
+  List<Object?> get props => [settings]; 
+}
+
+class AdminSuccess extends AdminState { 
+  final String msg; 
+  AdminSuccess(this.msg); 
+  @override 
+  List<Object?> get props => [msg]; 
+}
+
+class AdminError extends AdminState { 
+  final String msg; 
+  AdminError(this.msg); 
+  @override 
+  List<Object?> get props => [msg]; 
+}
+
+// ════════════════════════════════════════════════════════════════════
 // ADMIN BLOC
 // ════════════════════════════════════════════════════════════════════
 
-abstract class AdminEvent extends Equatable { @override List<Object?> get props => []; }
-class LoadUsers extends AdminEvent {}
-class CreateUser extends AdminEvent { final Map<String, dynamic> data; CreateUser(this.data); @override List<Object?> get props => [data]; }
-class UpdateUser extends AdminEvent { final String id; final Map<String, dynamic> data; UpdateUser(this.id, this.data); @override List<Object?> get props => [id, data]; }
-class ToggleUser extends AdminEvent { final String id; ToggleUser(this.id); @override List<Object?> get props => [id]; }
-class LoadSettings extends AdminEvent {}
-class SaveSettings extends AdminEvent { final Map<String, dynamic> data; SaveSettings(this.data); @override List<Object?> get props => [data]; }
-
-abstract class AdminState extends Equatable { @override List<Object?> get props => []; }
-class AdminInitial extends AdminState {}
-class AdminLoading extends AdminState {}
-class UsersLoaded extends AdminState { final List<AppUser> users; UsersLoaded(this.users); @override List<Object?> get props => [users]; }
-class SettingsLoaded extends AdminState { final Map<String, dynamic> settings; SettingsLoaded(this.settings); @override List<Object?> get props => [settings]; }
-class AdminSuccess extends AdminState { final String msg; AdminSuccess(this.msg); @override List<Object?> get props => [msg]; }
-class AdminError extends AdminState { final String msg; AdminError(this.msg); @override List<Object?> get props => [msg]; }
-
 class AdminBloc extends Bloc<AdminEvent, AdminState> {
   final AdminService _s;
+  
+  // Cache local pour conserver l'état des paramètres système lors de la synchronisation BDD
+  Map<String, dynamic> _cachedSettings = {};
+
   AdminBloc(this._s) : super(AdminInitial()) {
-    on<LoadUsers>((_, emit) async { emit(AdminLoading()); try { emit(UsersLoaded(await _s.getUsers())); } catch (err) { emit(AdminError(err.toString())); } });
-    on<CreateUser>((e, emit) async { emit(AdminLoading()); try { await _s.createUser(e.data); emit(AdminSuccess('Utilisateur créé')); add(LoadUsers()); } catch (err) { emit(AdminError(err.toString())); } });
-    on<UpdateUser>((e, emit) async { emit(AdminLoading()); try { await _s.updateUser(e.id, e.data); emit(AdminSuccess('Utilisateur mis à jour')); add(LoadUsers()); } catch (err) { emit(AdminError(err.toString())); } });
-    on<ToggleUser>((e, emit) async { try { await _s.toggleUser(e.id); add(LoadUsers()); } catch (err) { emit(AdminError(err.toString())); } });
-    on<LoadSettings>((_, emit) async { emit(AdminLoading()); try { emit(SettingsLoaded(await _s.getSettings())); } catch (err) { emit(AdminError(err.toString())); } });
-    on<SaveSettings>((e, emit) async { emit(AdminLoading()); try { await _s.saveSettings(e.data); emit(AdminSuccess('Paramètres sauvegardés')); } catch (err) { emit(AdminError(err.toString())); } });
+    
+    // --- GESTION DES UTILISATEURS ---
+    
+    on<LoadUsers>((_, emit) async { 
+      emit(AdminLoading()); 
+      try { 
+        emit(UsersLoaded(await _s.getUsers())); 
+      } catch (err) { 
+        emit(AdminError(err.toString())); 
+      } 
+    });
+
+    on<CreateUser>((e, emit) async { 
+      emit(AdminLoading()); 
+      try { 
+        await _s.createUser(e.data); 
+        emit(AdminSuccess('Utilisateur créé avec succès')); 
+        add(LoadUsers()); 
+      } catch (err) { 
+        emit(AdminError(err.toString())); 
+      } 
+    });
+
+    on<UpdateUser>((e, emit) async { 
+      emit(AdminLoading()); 
+      try { 
+        await _s.updateUser(e.id, e.data); 
+        emit(AdminSuccess('Utilisateur mis à jour avec succès')); 
+        add(LoadUsers()); 
+      } catch (err) { 
+        emit(AdminError(err.toString())); 
+      } 
+    });
+
+    on<ToggleUser>((e, emit) async { 
+      try { 
+        await _s.toggleUser(e.id); 
+        add(LoadUsers()); 
+      } catch (err) { 
+        emit(AdminError(err.toString())); 
+      } 
+    });
+
+    // --- GESTION DES PARAMÈTRES (SETTINGS) ---
+    
+    on<LoadSettings>((_, emit) async { 
+      emit(AdminLoading()); 
+      try { 
+        _cachedSettings = await _s.getSettings(); 
+        emit(SettingsLoaded(_cachedSettings)); 
+      } catch (err) { 
+        emit(AdminError(err.toString())); 
+      } 
+    });
+
+    on<SaveSettings>((e, emit) async { 
+      try { 
+        // 1. On applique instantanément le changement dans l'UI pour une sensation de fluidité
+        _cachedSettings = e.data; 
+        emit(SettingsLoaded(_cachedSettings)); 
+
+        // 2. Envoi en arrière-plan à l'API Spring Boot
+        await _s.saveSettings(e.data); 
+        
+        // 3. Déclenchement du SnackBar de succès dans la vue
+        emit(AdminSuccess('Paramètres système mis à jour')); 
+        
+        // 4. On remet immédiatement l'écran en mode écoute des paramètres actuels
+        emit(SettingsLoaded(_cachedSettings));
+      } catch (err) { 
+        emit(AdminError(err.toString())); 
+      } 
+    });
   }
 }

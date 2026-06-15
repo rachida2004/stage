@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict d96Ojm2I3DkKd25Opo7j7rwPoCQhri05n3drK92Ld70awsuZKsBIfTyVx3mOgaE
+\restrict kXSlYbAZQlBUDePz18RJgWe3yxcq5nBGrbs3QVRj7PvvvaihywRO1ooSaIxVrcb
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -182,6 +182,18 @@ ALTER SEQUENCE public.affectation_ticket_id_seq OWNER TO postgres;
 
 ALTER SEQUENCE public.affectation_ticket_id_seq OWNED BY public.affectation_ticket.id;
 
+
+--
+-- Name: app_settings; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.app_settings (
+    cle character varying(255) NOT NULL,
+    valeur character varying(255) NOT NULL
+);
+
+
+ALTER TABLE public.app_settings OWNER TO postgres;
 
 --
 -- Name: base_communication; Type: TABLE; Schema: public; Owner: postgres
@@ -824,6 +836,20 @@ ALTER TABLE ONLY public.utilisateur_role ALTER COLUMN id SET DEFAULT nextval('pu
 --
 
 COPY public.affectation_invitation (id, invitation_id, agent_id, responsable_principal, date_affectation) FROM stdin;
+1	15	9	f	2026-06-11 00:20:55.429659
+7	14	5	f	2026-06-11 00:41:21.084003
+8	14	6	f	2026-06-11 00:41:21.089002
+9	14	9	t	2026-06-11 00:41:21.092021
+17	7	4	t	2026-06-11 18:10:03.180664
+20	9	4	t	2026-06-11 18:12:15.453061
+23	16	4	f	2026-06-11 19:33:56.919114
+24	16	6	f	2026-06-11 19:33:56.950348
+25	16	5	f	2026-06-11 19:33:56.958341
+26	12	5	t	2026-06-11 19:46:18.687952
+30	8	4	f	2026-06-11 23:19:32.590021
+31	8	7	f	2026-06-11 23:19:32.597974
+35	17	7	f	2026-06-14 05:59:50.70054
+36	17	6	f	2026-06-14 05:59:50.740717
 \.
 
 
@@ -844,6 +870,21 @@ COPY public.affectation_ticket (id, ticket_id, agent_id, responsable_principal, 
 11	13	3	t	2026-06-10 05:49:25.901474
 12	14	5	t	2026-06-10 09:47:41.618806
 13	15	7	t	2026-06-10 20:15:24.900223
+15	15	5	t	2026-06-11 19:50:44.441287
+16	15	1	t	2026-06-11 19:51:01.868894
+18	14	7	t	2026-06-11 23:18:58.410668
+\.
+
+
+--
+-- Data for Name: app_settings; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.app_settings (cle, valeur) FROM stdin;
+notificationsEmail	true
+notificationsInternes	true
+delaiMaxSansAffectation	48h
+langue	Français
 \.
 
 
@@ -879,13 +920,17 @@ COPY public.invitation (id, objet, date_debut, date_fin, nombre_participant, sta
 4	d	2026-06-02	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-03 09:39:51.154846	\N
 5	g	2026-06-16	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-03 11:00:56.485296	\N
 6	qss	2026-06-12	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-04 11:02:25.242992	\N
-7	ghjk	2026-06-08	2026-06-10	0	EN_ATTENTE	PUBLIC	2026-06-08 18:32:18.303401	\N
-8	LKJHGCFHJ	2026-06-09	2026-06-26	2	EN_ATTENTE	PUBLIC	2026-06-09 01:27:23.776136	\N
-9	xghjklw	2026-06-09	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-09 22:46:40.296999	\N
 10	bvnvjkd	2026-06-10	2026-06-25	0	EN_ATTENTE	PUBLIC	2026-06-10 08:47:05.459443	\N
 11	wxcvbn	2026-06-10	2026-06-18	0	EN_ATTENTE	PUBLIC	2026-06-10 08:57:23.86118	\N
-12	x,	2026-06-24	2026-06-18	0	EN_ATTENTE	PUBLIC	2026-06-10 09:36:19.968002	\N
-14	cvbnk	2026-06-10	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-10 11:31:19.972371	\N
+15	xcgvhbn	2026-06-10	2026-06-18	0	EN_COURS	PUBLIC	2026-06-10 22:59:46.448865	\N
+14	cvbnk	2026-06-10	2026-06-26	0	EN_COURS	PUBLIC	2026-06-10 11:31:19.972371	\N
+16	dfghj	2026-06-11	2026-06-19	0	EN_COURS	PUBLIC	2026-06-11 00:44:30.300541	\N
+7	ghjk	2026-06-08	2026-06-10	0	TERMINEE	PUBLIC	2026-06-08 18:32:18.303401	\N
+8	LKJHGCFHJ	2026-06-09	2026-06-26	2	EN_COURS	PUBLIC	2026-06-09 01:27:23.776136	\N
+9	xghjklw	2026-06-09	2026-06-26	0	EN_COURS	PUBLIC	2026-06-09 22:46:40.296999	\N
+12	x,	2026-06-24	2026-06-18	0	PLANIFIEE	PUBLIC	2026-06-10 09:36:19.968002	\N
+17	g fjkl	2026-06-11	2026-06-13	0	TERMINEE	PUBLIC	2026-06-11 19:49:30.101747	\N
+18	xdfcvbn	2026-06-14	2026-06-16	0	EN_ATTENTE	PUBLIC	2026-06-14 06:01:20.359373	\N
 \.
 
 
@@ -906,6 +951,33 @@ COPY public.notification (id, message, date_envoi, canal, statut, categorie, res
 10	Vous avez été affecté au ticket #13	2026-06-10 05:49:25.986835	INTERNE	t	TICKET	13	Voir	3
 11	Vous avez été affecté au ticket #14	2026-06-10 09:47:41.627917	INTERNE	f	TICKET	14	Voir	5
 12	Vous avez été affecté au ticket #15	2026-06-10 20:15:24.907714	INTERNE	f	TICKET	15	Voir	7
+13	Vous avez été affecté à l'invitation : xcgvhbn	2026-06-11 00:20:55.45176	INTERNE	f	INVITATION	15	Voir	9
+19	Vous avez été affecté à l'invitation : cvbnk	2026-06-11 00:41:21.086004	INTERNE	f	INVITATION	14	Voir	5
+20	Vous avez été affecté à l'invitation : cvbnk	2026-06-11 00:41:21.089998	INTERNE	f	INVITATION	14	Voir	6
+21	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : cvbnk	2026-06-11 00:41:21.093018	INTERNE	f	INVITATION	14	Voir	9
+25	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : dfghj	2026-06-11 00:44:45.573227	INTERNE	f	INVITATION	16	Voir	4
+29	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : ghjk	2026-06-11 18:10:03.197979	INTERNE	f	INVITATION	7	Voir	4
+31	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : LKJHGCFHJ	2026-06-11 18:11:37.601446	INTERNE	f	INVITATION	8	Voir	4
+32	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : xghjklw	2026-06-11 18:12:15.453061	INTERNE	f	INVITATION	9	Voir	4
+33	Vous avez été affecté à l'invitation : dfghj	2026-06-11 18:35:13.567461	INTERNE	f	INVITATION	16	Voir	4
+34	Vous avez été affecté à l'invitation : dfghj	2026-06-11 18:35:13.578575	INTERNE	f	INVITATION	16	Voir	6
+35	Vous avez été affecté à l'invitation : dfghj	2026-06-11 19:33:56.946118	INTERNE	f	INVITATION	16	Voir	4
+36	Vous avez été affecté à l'invitation : dfghj	2026-06-11 19:33:56.953355	INTERNE	f	INVITATION	16	Voir	6
+37	Vous avez été affecté à l'invitation : dfghj	2026-06-11 19:33:56.961337	INTERNE	f	INVITATION	16	Voir	5
+38	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : x,	2026-06-11 19:46:18.708954	INTERNE	f	INVITATION	12	Voir	5
+39	Vous avez été affecté à l'invitation : g fjkl	2026-06-11 19:49:46.878167	INTERNE	f	INVITATION	17	Voir	6
+40	Vous avez été affecté au ticket #15	2026-06-11 19:50:44.441287	INTERNE	f	TICKET	15	Voir	5
+41	Vous avez été affecté au ticket #15	2026-06-11 19:51:01.878016	INTERNE	f	TICKET	15	Voir	1
+42	Vous avez été affecté à l'invitation : g fjkl	2026-06-11 20:22:46.706012	INTERNE	f	INVITATION	17	Voir	6
+43	Vous avez été affecté à l'invitation : g fjkl	2026-06-11 20:22:46.711012	INTERNE	f	INVITATION	17	Voir	4
+44	Vous avez été affecté au ticket #14	2026-06-11 23:18:58.431792	INTERNE	f	TICKET	14	Voir	7
+45	Vous avez été affecté à l'invitation : LKJHGCFHJ	2026-06-11 23:19:32.592973	INTERNE	f	INVITATION	8	Voir	4
+46	Vous avez été affecté à l'invitation : LKJHGCFHJ	2026-06-11 23:19:32.599986	INTERNE	f	INVITATION	8	Voir	7
+47	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	4
+48	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	6
+49	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	7
+50	Vous avez été affecté à l'invitation : g fjkl	2026-06-14 05:59:50.73535	INTERNE	f	INVITATION	17	Voir	7
+51	Vous avez été affecté à l'invitation : g fjkl	2026-06-14 05:59:50.74522	INTERNE	f	INVITATION	17	Voir	6
 \.
 
 
@@ -927,6 +999,12 @@ COPY public.piece_jointe_invitation (id, nom, type, chemin, date_envoi, invitati
 11	invitation_9.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/11/753957d5-2328-4293-82f2-2c3aeb10e559_invitation_9.docx	2026-06-10 08:57:23.868189	11
 12	invitation_9.pdf	application/pdf	invitations/12/61780227-e8ee-4916-9cfd-14b6821f7f50_invitation_9.pdf	2026-06-10 09:36:20.022315	12
 13	invitation_12.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/14/bb16d6fc-cfae-4daa-b84d-99485e753658_invitation_12.docx	2026-06-10 11:31:20.016225	14
+14	invitation_10.pdf	application/pdf	invitations/15/6742cc48-2343-4e3c-ab17-b2b8f5051093_invitation_10.pdf	2026-06-10 22:59:46.483974	15
+15	invitation_9.pdf	application/pdf	invitations/16/4d5332ec-a3d3-465e-bdc1-f05a72580ee7_invitation_9.pdf	2026-06-11 00:44:30.308541	16
+16	invitation_12.pdf	application/pdf	invitations/17/a7977009-1fe4-4c18-8e92-803c038f93ef_invitation_12.pdf	2026-06-11 19:49:30.113194	17
+17	invitation_12.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/17/fb87a120-bf82-4c21-81fb-4cc9c273a5a2_invitation_12.docx	2026-06-11 19:49:30.116245	17
+18	invitation_10.pdf	application/pdf	invitations/17/881a358f-515a-4c7c-88cd-d771246fb287_invitation_10.pdf	2026-06-11 19:49:30.118235	17
+19	invitation_17.pdf	application/pdf	invitations/18/5b4a5d6f-564c-4f43-9b1b-ad9daa1a5c35_invitation_17.pdf	2026-06-14 06:01:20.371371	18
 \.
 
 
@@ -1007,7 +1085,7 @@ COPY public.ticket (id, date_creation, statut, priorite, solution, structure_id,
 12	2026-06-09 23:17:56.602588	EN_COURS	MOYENNE	\N	\N	\N	BJ DN
 13	2026-06-10 05:40:16.806509	EN_COURS	MOYENNE	\N	\N	\N	jgvbn,
 14	2026-06-10 09:47:25.99907	EN_PAUSE	MOYENNE	\N	\N	\N	dgjhk
-15	2026-06-10 20:15:06.621289	EN_COURS	MOYENNE	\N	\N	\N	bhjkn,
+15	2026-06-10 20:15:06.621289	RESOLU	MOYENNE	\N	\N	\N	bhjkn,
 \.
 
 
@@ -1025,6 +1103,7 @@ COPY public.utilisateur (user_id, nom, prenom, email, telephone, mot_de_passe, d
 9	rachida	barro	rachidabarro@gmail.com	76847464	$2a$10$UHpIq24G/qOzuynyax7cMuJywrFaJpoCzDsBSvL4/A1819vwW2d8e	2026-06-09 23:16:42.856016	23	t	\N	\N
 1	rachi	konte	rachi@gmail.com	54637383	$2a$10$X.J.YQwzP2zLhhk3LobZwORPc2C12p8aWXI6PH3I9TNaXPhouHH3y	2026-06-01 15:54:10.743005	1234	t	\N	\N
 6	barro	rachi	rachidabarro98@mail.com	78674345	$2a$10$8zeyvxNk9YrYzl1Vsp/P.ulTUOlsd5zpiS98rfGvvRujMaDNGTQry	2026-06-09 01:10:57.386182	4354	t	\N	\N
+10	raz	ros	rosraz@gmail.com	\N	$2a$10$Hx.0iIjXgnMrFdlE3tbfRu3d33gSOBIsx3jXQHyOVixqQsTh4FdaG	2026-06-11 21:05:53.520787	\N	t	\N	\N
 \.
 
 
@@ -1039,9 +1118,10 @@ COPY public.utilisateur_role (id, user_id, role_id) FROM stdin;
 4	4	2
 5	5	2
 6	6	2
-7	7	4
-8	8	3
 9	9	1
+10	10	4
+11	8	2
+12	7	2
 \.
 
 
@@ -1049,14 +1129,14 @@ COPY public.utilisateur_role (id, user_id, role_id) FROM stdin;
 -- Name: affectation_invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.affectation_invitation_id_seq', 1, false);
+SELECT pg_catalog.setval('public.affectation_invitation_id_seq', 36, true);
 
 
 --
 -- Name: affectation_ticket_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.affectation_ticket_id_seq', 14, true);
+SELECT pg_catalog.setval('public.affectation_ticket_id_seq', 18, true);
 
 
 --
@@ -1084,21 +1164,21 @@ SELECT pg_catalog.setval('public.communication_id_seq', 1, false);
 -- Name: invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.invitation_id_seq', 14, true);
+SELECT pg_catalog.setval('public.invitation_id_seq', 18, true);
 
 
 --
 -- Name: notification_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.notification_id_seq', 12, true);
+SELECT pg_catalog.setval('public.notification_id_seq', 51, true);
 
 
 --
 -- Name: piece_jointe_invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.piece_jointe_invitation_id_seq', 13, true);
+SELECT pg_catalog.setval('public.piece_jointe_invitation_id_seq', 19, true);
 
 
 --
@@ -1147,14 +1227,14 @@ SELECT pg_catalog.setval('public.ticket_id_seq', 15, true);
 -- Name: utilisateur_role_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.utilisateur_role_id_seq', 9, true);
+SELECT pg_catalog.setval('public.utilisateur_role_id_seq', 12, true);
 
 
 --
 -- Name: utilisateur_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.utilisateur_user_id_seq', 9, true);
+SELECT pg_catalog.setval('public.utilisateur_user_id_seq', 10, true);
 
 
 --
@@ -1187,6 +1267,14 @@ ALTER TABLE ONLY public.affectation_ticket
 
 ALTER TABLE ONLY public.affectation_ticket
     ADD CONSTRAINT affectation_ticket_ticket_id_agent_id_key UNIQUE (ticket_id, agent_id);
+
+
+--
+-- Name: app_settings app_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.app_settings
+    ADD CONSTRAINT app_settings_pkey PRIMARY KEY (cle);
 
 
 --
@@ -1626,5 +1714,5 @@ REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict d96Ojm2I3DkKd25Opo7j7rwPoCQhri05n3drK92Ld70awsuZKsBIfTyVx3mOgaE
+\unrestrict kXSlYbAZQlBUDePz18RJgWe3yxcq5nBGrbs3QVRj7PvvvaihywRO1ooSaIxVrcb
 

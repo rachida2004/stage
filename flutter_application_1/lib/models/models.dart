@@ -1,6 +1,51 @@
 import 'dart:convert';
+class Structure {
+  final int? id; // Remplacé Long par int
+  final String nom;
+  final String? adresse;
+  final String? telephone;
+  final String? email;
 
-// ════════════════════════════════════════════════════════════════════
+  Structure({this.id, required this.nom, this.adresse, this.telephone, this.email});
+
+  factory Structure.fromJson(Map<String, dynamic> json) {
+    return Structure(
+      id: json['id'] != null ? (json['id'] as num).toInt() : null,
+      nom: json['nom'] ?? '',
+      adresse: json['adresse'],
+      telephone: json['telephone'],
+      email: json['email'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'nom': nom,
+      'adresse': adresse,
+      'telephone': telephone,
+      'email': email,
+    };
+  }
+}
+class Service {
+  final int? id;
+  final String nom;
+  final String? description;
+  final Structure? structure; // Objet complet ou ID selon votre implémentation
+
+  Service({this.id, required this.nom, this.description, this.structure});
+
+  factory Service.fromJson(Map<String, dynamic> json) {
+    return Service(
+      id: json['id'] != null ? (json['id'] as num).toInt() : null,
+      nom: json['nom'] ?? '',
+      description: json['description'],
+      structure: json['structure'] != null ? Structure.fromJson(json['structure']) : null,
+    );
+  }
+}
+/// ════════════════════════════════════════════════════════════════════
 // INVITATION MODELE
 // ════════════════════════════════════════════════════════════════════
 
@@ -40,7 +85,7 @@ extension InvitationStatusExt on InvitationStatus {
 }
 
 class Invitation {
-  final String id; // Gère les formats numériques ou UUID de PostgreSQL
+  final String id;
   final String objet;
   final String structureEmettrice;
   final DateTime dateDebut;
@@ -67,19 +112,23 @@ class Invitation {
   });
 
   factory Invitation.fromJson(Map<String, dynamic> j) => Invitation(
-    id:                 j['id']?.toString() ?? '',
-    objet:              j['objet'] ?? '',
-    structureEmettrice: j['structureEmettrice'] ?? '',
-    // ✅ CORRECTION : Sécurisation du parsing des dates pour éviter un crash si le format change
-    dateDebut:          j['dateDebut'] != null ? (DateTime.tryParse(j['dateDebut'].toString()) ?? DateTime.now()) : DateTime.now(),
-    dateFin:            j['dateFin'] != null ? (DateTime.tryParse(j['dateFin'].toString()) ?? DateTime.now()) : DateTime.now(),
-    nombreParticipants: j['nombreParticipants'] ?? 0,
-    lieu:               j['lieu'],
-    description:        j['description'],
-    status:             InvitationStatusExt.fromApi(j['status']),
+    id:                   j['id']?.toString() ?? '',
+    objet:                j['objet'] ?? '',
+    
+    // ✅ CORRECTION : Lecture prioritaire de 'nomStructure' envoyée par le formulaire
+    structureEmettrice:   j['nomStructure'] ?? j['structureEmettrice'] ?? 'Non spécifiée',
+    
+    dateDebut:            j['dateDebut'] != null ? (DateTime.tryParse(j['dateDebut'].toString()) ?? DateTime.now()) : DateTime.now(),
+    dateFin:              j['dateFin'] != null ? (DateTime.tryParse(j['dateFin'].toString()) ?? DateTime.now()) : DateTime.now(),
+    nombreParticipants:   j['nombreParticipants'] ?? 0,
+    
+    // ✅ CORRECTION : Valeur par défaut si lieu est absent ou vide
+    lieu:                 (j['lieu'] != null && j['lieu'].toString().isNotEmpty) ? j['lieu'] : 'Non précisé',
+    
+    description:          j['description'],
+    status:               InvitationStatusExt.fromApi(j['status']),
     agentsAffectes: (j['agentsAffectes'] as List<dynamic>? ?? [])
         .map((e) => AppUser.fromJson(e)).toList(),
-    // ✅ CORRECTION CRITIQUE : Extrait l'URL de l'objet pièce jointe (Map) au lieu de faire un .toString() brut
     files: (j['files'] as List<dynamic>? ?? j['piecesJointes'] as List<dynamic>? ?? [])
         .map((e) {
           if (e is Map) {
@@ -371,7 +420,7 @@ class AppUser {
       role: UserRoleExt.fromApi(roleStr),
       initiales: j['initiales'] ?? _computeInitiales(j['nom'], j['prenom']),
       // Tolère 'actif' (venant de la table PG) ou 'active'
-      active: j['actif'] ?? j['active'] ?? j['isActive'] ?? true, 
+     active: (j['actif'] == true) || (j['active'] == true) || (j['isActive'] == true),
       structure: j['structure'],
       service: j['service'],
     );

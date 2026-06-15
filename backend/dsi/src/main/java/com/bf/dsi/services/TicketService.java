@@ -26,14 +26,22 @@ public class TicketService {
         Utilisateur agent = utilisateurRepository.findById(agentId)
                 .orElseThrow(() -> new RuntimeException("Agent introuvable"));
 
-        // Création de l'association en utilisant 'responsablePrincipal' au lieu de 'actif'
+        // VÉRIFICATION D'UNICITÉ : Empêche la violation de contrainte SQL 23505
+        boolean dejaAffecte = ticket.getAffectations().stream()
+                .anyMatch(a -> a.getAgent().getUserId().equals(agentId));
+
+        if (dejaAffecte) {
+            throw new RuntimeException("Cet agent est déjà affecté à ce ticket.");
+        }
+
+        // Création de l'association
         AffectationTicket affectation = AffectationTicket.builder()
                 .ticket(ticket)
                 .agent(agent)
-                .responsablePrincipal(true) // L'agent assigné devient le responsable principal
-                .build(); // L'attribut dateAffectation sera géré par le @PrePersist de l'entité
+                .responsablePrincipal(true)
+                .build();
 
-        // Ajout dans le Set du Ticket (géré par CascadeType.ALL)
+        // Ajout dans le Set du Ticket
         ticket.getAffectations().add(affectation);
         
         // Règle métier : Si le ticket était "EN_ATTENTE", il passe "EN_COURS"
@@ -44,16 +52,18 @@ public class TicketService {
         return ticketRepository.save(ticket);
     }
 
-    // CHANGEMENT DE STATUT MANUEL (En pause, Résolu, Fermé)
+    // CHANGEMENT DE STATUT MANUEL
     @Transactional
     public Ticket modifierStatut(Long ticketId, StatutTicket nouveauStatut, String solution) {
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new RuntimeException("Ticket introuvable"));
 
-        // Règles métiers lors du changement de statut
+        // Règles métiers
         if (nouveauStatut == StatutTicket.RESOLU) {
             if (solution != null && !solution.trim().isEmpty()) {
                 ticket.setSolution(solution);
+            } else {
+                throw new RuntimeException("Une solution est requise pour clore le ticket.");
             }
         }
         

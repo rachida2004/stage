@@ -366,7 +366,7 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
 
   void _submit() {
     if (_objetCtrl.text.trim().isEmpty ||
-        _structCtrl.text.trim().isEmpty ||
+        _structCtrl.text.trim().isEmpty || // Vérifie que la structure est saisie
         _dateDebut == null ||
         _dateFin == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -383,14 +383,13 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
     context.read<InvitationBloc>().add(CreateInvitation(
       {
         'objet': _objetCtrl.text.trim(),
-        'structureEmettrice': _structCtrl.text.trim(),
+        'nomStructure': _structCtrl.text.trim(), // 👈 MODIFIÉ : "nomStructure" au lieu de "structureEmettrice"
+        'lieu': _lieuCtrl.text.trim(),           // 👈 MODIFIÉ : Envoi explicite du lieu
         'dateDebut':
             '${_dateDebut!.year}-${_dateDebut!.month.toString().padLeft(2, '0')}-${_dateDebut!.day.toString().padLeft(2, '0')}',
         'dateFin':
             '${_dateFin!.year}-${_dateFin!.month.toString().padLeft(2, '0')}-${_dateFin!.day.toString().padLeft(2, '0')}',
-        if (_lieuCtrl.text.trim().isNotEmpty) 'lieu': _lieuCtrl.text.trim(),
-        if (_nbCtrl.text.trim().isNotEmpty)
-          'nombreParticipants': int.tryParse(_nbCtrl.text.trim()) ?? 0,
+        'nombreParticipants': int.tryParse(_nbCtrl.text.trim()) ?? 0, // 👈 MODIFIÉ : Suppression du 'if', envoi systématique
       },
       filePaths: const [],
       fileBytes: fileBytes,
@@ -398,7 +397,6 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
 
     Navigator.pop(context);
   }
-
   @override
   Widget build(BuildContext context) {
     return BlocListener<InvitationBloc, InvitationState>(
@@ -637,7 +635,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Export PDF en cours…'),
-        backgroundColor: Color(0xFF2ECC71),
+        backgroundColor: Color.fromARGB(255, 5, 65, 30),
         duration: Duration(seconds: 2),
       ),
     );
@@ -663,7 +661,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Export Word en cours…'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Color.fromARGB(255, 3, 66, 35),
         duration: Duration(seconds: 2),
       ),
     );
@@ -730,7 +728,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF2ECC71),
+        backgroundColor: const Color.fromARGB(255, 3, 75, 33),
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -861,7 +859,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.insert_drive_file_outlined, color: Color(0xFF2ECC71), size: 22),
+                                  const Icon(Icons.insert_drive_file_outlined, color: Color.fromARGB(255, 5, 77, 35), size: 22),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
@@ -953,7 +951,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
                   icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
                   label: const Text('Exporter en PDF', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2ECC71),
+                    backgroundColor: const Color.fromARGB(255, 4, 64, 29),
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1110,7 +1108,7 @@ class _AffectationModalState extends State<_AffectationModal> {
           const SizedBox(height: 16),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2ECC71),
+              backgroundColor: const Color.fromARGB(255, 6, 69, 32),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

@@ -7,6 +7,7 @@ import com.bf.dsi.enums.*;
 import com.bf.dsi.repository.*;
 import com.bf.dsi.services.FileStorageService;
 import com.bf.dsi.services.TicketService;
+import com.bf.dsi.services.AppSettingService; // 🎯 1. Importation de ton nouveau service de configuration
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.http.*;
@@ -26,6 +27,7 @@ public class TicketController {
     private final NotificationRepository notificationRepo;
     private final FileStorageService fileStorage;
     private final TicketService ticketService;
+    private final AppSettingService appSettingService; // 🎯 2. Injection automatique via @RequiredArgsConstructor
 
     @GetMapping
     public ResponseEntity<?> getAll(
@@ -52,7 +54,6 @@ public class TicketController {
             .orElse(ResponseEntity.notFound().build());
     }
 
-    // ── Création via JSON (Flutter) ─────────────────────────────────
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> createJson(@RequestBody TicketRequest req) {
         Ticket ticket = Ticket.builder()
@@ -69,7 +70,6 @@ public class TicketController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(ticketRepo.save(ticket)));
     }
 
-    // ── Création via multipart (avec fichier joint) ─────────────────
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createMultipart(
             @RequestParam String description,
@@ -113,11 +113,17 @@ public class TicketController {
             
             Ticket saved = ticketService.modifierStatut(id, nouveauStatut, solution);
             
+            // 🎯 3. Condition sur l'option "Notifications internes" gérée par l'admin
             if (saved.getStatut() == StatutTicket.RESOLU && saved.getCreateur() != null) {
-                notificationRepo.save(Notification.builder()
-                    .message("Votre ticket #" + id + " a été résolu.")
-                    .categorie("TICKET").actionLabel("Voir").resourceId(id.toString())
-                    .utilisateur(saved.getCreateur()).build());
+                if (appSettingService.isInternalNotificationEnabled()) {
+                    notificationRepo.save(Notification.builder()
+                        .message("Votre ticket #" + id + " a été résolu.")
+                        .categorie("TICKET").actionLabel("Voir").resourceId(id.toString())
+                        .utilisateur(saved.getCreateur()).build());
+                }
+                
+                // Optionnel : si tu as un service mail, tu ajoutes la même vérification pour l'email
+                // if (appSettingService.isEmailNotificationEnabled()) { emailService.send(...) }
             }
             return ResponseEntity.ok(toDto(saved));
         } catch (Exception e) {
@@ -130,10 +136,17 @@ public class TicketController {
         Ticket ticket = ticketService.affecterAgent(ticketId, agentId);
 
         Utilisateur agent = utilisateurRepo.findById(agentId).orElseThrow();
-        notificationRepo.save(Notification.builder()
-            .message("Vous avez été affecté au ticket #" + ticketId)
-            .categorie("TICKET").actionLabel("Voir").resourceId(ticketId.toString())
-            .utilisateur(agent).build());
+        
+        // 🎯 4. Condition sur l'option "Notifications internes" lors de l'affectation
+        if (appSettingService.isInternalNotificationEnabled()) {
+            notificationRepo.save(Notification.builder()
+                .message("Vous avez été affecté au ticket #" + ticketId)
+                .categorie("TICKET").actionLabel("Voir").resourceId(ticketId.toString())
+                .utilisateur(agent).build());
+        }
+
+        // Si tu as configuré un service d'envoi de mail, tu peux greffer la vérification ici
+        // if (appSettingService.isEmailNotificationEnabled()) { ... }
 
         return ResponseEntity.ok(toDto(ticket));
     }
@@ -151,7 +164,6 @@ public class TicketController {
             .build();
         communicationRepo.save(comm);
 
-        // Identification du destinataire (Utilisation correcte de getUserId())
         Utilisateur dest = auteurId.equals(
             ticket.getAffectations().stream()
                 .filter(a -> Boolean.TRUE.equals(a.getResponsablePrincipal()))
@@ -161,11 +173,14 @@ public class TicketController {
                 .filter(a -> Boolean.TRUE.equals(a.getResponsablePrincipal()))
                 .map(AffectationTicket::getAgent).findFirst().orElse(null);
 
+        // 🎯 5. Condition sur l'option "Notifications internes" pour les nouveaux messages du chat
         if (dest != null && !dest.getUserId().equals(auteurId)) {
-            notificationRepo.save(Notification.builder()
-                .message("Nouveau message sur le ticket #" + ticketId)
-                .categorie("TICKET").actionLabel("Voir").resourceId(ticketId.toString())
-                .utilisateur(dest).build());
+            if (appSettingService.isInternalNotificationEnabled()) {
+                notificationRepo.save(Notification.builder()
+                    .message("Nouveau message sur le ticket #" + ticketId)
+                    .categorie("TICKET").actionLabel("Voir").resourceId(ticketId.toString())
+                    .utilisateur(dest).build());
+            }
         }
 
         return ResponseEntity.ok(toDto(ticketRepo.findById(ticketId).orElseThrow()));
@@ -196,7 +211,7 @@ public class TicketController {
             
         m.put("messages", communicationRepo.findByTicketIdOrderByDateAsc(t.getId())
             .stream().map(c -> Map.of(
-                "auteurId", c.getAuteur().getUserId(), // Ajusté avec getUserId()
+                "auteurId", c.getAuteur().getUserId(),
                 "auteurNom", c.getAuteur().getNom() + " " + (c.getAuteur().getPrenom() != null ? c.getAuteur().getPrenom() : ""),
                 "auteurInitiales", c.getAuteur().getInitiales(),
                 "message", c.getMessage(),
@@ -210,7 +225,7 @@ public class TicketController {
 
     private Map<String, Object> userMap(Utilisateur u) {
         return Map.of(
-            "id", u.getUserId(), // Ajusté avec getUserId() pour correspondre au format attendu par Flutter
+            "id", u.getUserId(),
             "nom", u.getNom(),
             "prenom", u.getPrenom() != null ? u.getPrenom() : "",
             "email", u.getEmail(), 

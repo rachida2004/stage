@@ -58,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Avatar avec Initiales
                 CircleAvatar(
                   radius: 40,
-                  backgroundColor: const Color.fromARGB(255, 10, 206, 62),
+                  backgroundColor: const Color.fromARGB(255, 3, 67, 20),
                   child: Text(
                     initiales,
                     style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
@@ -94,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 10, 206, 62),
+                      backgroundColor: const Color.fromARGB(255, 6, 70, 23),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -130,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 selectedIndex: _currentIndex,
                 onDestinationSelected: (i) => setState(() => _currentIndex = i),
                 labelType: NavigationRailLabelType.all,
-                backgroundColor: const Color.fromARGB(255, 10, 206, 62),
+                backgroundColor: const Color.fromARGB(255, 3, 71, 21),//bar vertical
                 selectedIconTheme: const IconThemeData(color: Colors.white),
                 unselectedIconTheme: const IconThemeData(color: Colors.white70),
                 selectedLabelTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
