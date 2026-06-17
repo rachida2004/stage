@@ -5,12 +5,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin; // 👈 AJOUTÉ
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
+@CrossOrigin(origins = "*") // 👈 AJOUTÉ : Autorise Flutter Web à lire l'IFrame du PDF
 public class FileController {
 
     private final FileStorageService fileStorageService;
@@ -29,7 +31,7 @@ public class FileController {
             // Utilisation de ta méthode load() existante
             byte[] fileData = fileStorageService.load(relativePath);
 
-            // Détermination du Content-Type (Optionnel mais propre pour les navigateurs)
+            // Détermination du Content-Type
             MediaType contentType = MediaType.APPLICATION_OCTET_STREAM;
             if (filename.toLowerCase().endsWith(".pdf")) {
                 contentType = MediaType.APPLICATION_PDF;
@@ -39,8 +41,9 @@ public class FileController {
 
             return ResponseEntity.ok()
                     .contentType(contentType)
-                    // "inline" permet au navigateur d'ouvrir le PDF directement s'il le souhaite, ou de forcer le téléchargement
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    // 🎯 MODIFIÉ : Remplacement de "attachment" par "inline" pour que le navigateur
+                    // accepte d'afficher le PDF dans l'IFrame au lieu de lancer un téléchargement de fichier.
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
                     .body(fileData);
 
         } catch (RuntimeException e) {

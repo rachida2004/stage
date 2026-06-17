@@ -34,6 +34,10 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http,
                                             JwtFilter jwtFilter) throws Exception {
         http
+            // 🎯 CORRECTION : frameOptions doit être imbriqué dans .headers()
+            .headers(headers -> headers
+                .frameOptions(frameOptions -> frameOptions.disable())
+            )
             .cors(c -> c.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -41,7 +45,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
                 
-                // 🎯 AJOUT : Autorise le téléchargement des pièces jointes sans token JWT
+                // 🎯 Autorise le téléchargement des pièces jointes sans token JWT
                 .requestMatchers("/api/files/download/**").permitAll()
                 
                 .requestMatchers("/api/invitations/*/export/**").permitAll()
@@ -65,7 +69,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/notifications/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
                 .requestMatchers(HttpMethod.GET, "/api/services").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/services/**").permitAll()
-      .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/structures").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/structures").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

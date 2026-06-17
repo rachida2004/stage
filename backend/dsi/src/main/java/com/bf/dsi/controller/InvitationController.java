@@ -43,9 +43,7 @@ public class InvitationController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String statut) {
-        Page<Invitation> result = invitationRepo.findAllFiltered(
-            search, statut,
-            PageRequest.of(page, size));
+        Page<Invitation> result = invitationRepo.findAllFiltered(search, statut, PageRequest.of(page, size));
         return ResponseEntity.ok(toPageResponse(result));
     }
 
@@ -64,11 +62,14 @@ public class InvitationController {
             .dateFin(req.getDateFin())
             .nombreParticipant(req.getNombreParticipants() != null ? req.getNombreParticipants() : 0)
             .visibilite(req.getVisibilite() != null ? req.getVisibilite() : "PUBLIC")
+            .lieu(req.getLieu()) // Ajout du lieu si présent dans le JSON
             .statut(StatutInvitation.EN_ATTENTE)
             .build();
             
-        if (req.getStructureEmettriceId() != null)
-            structureRepo.findById(req.getStructureEmettriceId()).ifPresent(inv::setStructureEmettrice);
+        // Alignement avec le champ String du DTO
+        if (req.getStructureEmettrice() != null && !req.getStructureEmettrice().trim().isEmpty()) {
+            structureRepo.findByNom(req.getStructureEmettrice()).ifPresent(inv::setStructureEmettrice);
+        }
             
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(invitationRepo.save(inv)));
     }
@@ -105,7 +106,6 @@ public class InvitationController {
             .statut(StatutInvitation.EN_ATTENTE)
             .build();
 
-        // Gestion de la structure : ID prioritaire, sinon recherche/création par nom
         if (structureEmettriceId != null) {
             structureRepo.findById(structureEmettriceId).ifPresent(inv::setStructureEmettrice);
         } else if (nomStructure != null && !nomStructure.trim().isEmpty()) {
@@ -138,6 +138,9 @@ public class InvitationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    // MÉTHODE DE MODIFICATION REVOUE ET ALIGNÉE
+    // ════════════════════════════════════════════════════════════════════
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody InvitationRequest req) {
         return invitationRepo.findById(id).map(inv -> {
@@ -146,11 +149,17 @@ public class InvitationController {
             if (req.getDateFin() != null) inv.setDateFin(req.getDateFin());
             if (req.getNombreParticipants() != null) inv.setNombreParticipant(req.getNombreParticipants());
             if (req.getVisibilite() != null) inv.setVisibilite(req.getVisibilite());
+            if (req.getLieu() != null) inv.setLieu(req.getLieu());
+            
             if (req.getStatut() != null) {
                 try { inv.setStatut(StatutInvitation.valueOf(req.getStatut())); } catch (Exception ignored) {}
             }
-            if (req.getStructureEmettriceId() != null)
-                structureRepo.findById(req.getStructureEmettriceId()).ifPresent(inv::setStructureEmettrice);
+            
+            // Récupère et associe l'entité Structure sur la base du nom textuel reçu du DTO
+            if (req.getStructureEmettrice() != null && !req.getStructureEmettrice().trim().isEmpty()) {
+                structureRepo.findByNom(req.getStructureEmettrice()).ifPresent(inv::setStructureEmettrice);
+            }
+            
             return ResponseEntity.ok(toDto(invitationRepo.save(inv)));
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -212,7 +221,6 @@ public class InvitationController {
         m.put("visibilite", i.getVisibilite());
         m.put("dateCreation", i.getDateCreation());
         
-        // Retourne le nom ou "Non spécifiée"
         m.put("structureEmettrice", (i.getStructureEmettrice() != null && i.getStructureEmettrice().getNom() != null) 
                                      ? i.getStructureEmettrice().getNom() 
                                      : "Non spécifiée");

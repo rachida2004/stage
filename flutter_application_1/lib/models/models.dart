@@ -597,20 +597,7 @@ class SampleData {
     Ticket(id: '025', description: 'Installation logiciel comptable', structure: 'Finances', status: TicketStatus.resolu, priority: TicketPriority.basse, createdAt: DateTime(2026, 4, 28)),
   ];
 
-  static List<AppUser> users = [
-    const AppUser(id: 'u1', nom: 'Administrateur Système', email: 'admin@dsi.gov', role: UserRole.admin, initiales: 'AD'),
-    const AppUser(id: 'u2', nom: 'Sali', prenom: 'Traoré', email: 's.traore@dsi.gov', role: UserRole.agent, initiales: 'ST'),
-    const AppUser(id: 'u3', nom: 'Mamadou', prenom: 'Kaboré', email: 'm.kabore@dsi.gov', role: UserRole.agent, initiales: 'MK'),
-    const AppUser(id: 'u4', nom: 'Fatou', prenom: 'Ouédraogo', email: 'f.ouedraogo@gov.bf', role: UserRole.usager, initiales: 'FO'),
-  ];
+ 
 
-  static List<NotificationModel> notifications = [
-    NotificationModel(id: 'n1', message: 'Vous avez été affecté à l\'invitation Forum IA — Dakar.', category: NotifCategory.invitation, date: DateTime(2026, 5, 5, 9, 37), actionLabel: 'Voir', relatedResourceId: 'INV-01'),
-    NotificationModel(id: 'n2', message: 'Le ticket #034 a été mis à jour par S. Traoré.', category: NotifCategory.ticket, date: DateTime(2026, 5, 5, 9, 0), actionLabel: 'Voir', relatedResourceId: '034'),
-    NotificationModel(id: 'n3', message: 'Nouvelle invitation reçue : Atelier open data — MATD.', category: NotifCategory.invitation, date: DateTime(2026, 5, 5, 7, 0), actionLabel: 'Affecter', relatedResourceId: 'INV-03'),
-    NotificationModel(id: 'n4', message: 'Le ticket #033 est sans agent depuis 2 jours.', category: NotifCategory.ticket, date: DateTime(2026, 5, 4, 14, 22), actionLabel: 'Affecter', relatedResourceId: '033'),
-    NotificationModel(id: 'n5', message: 'Rapport mensuel d\'avril disponible : 87% de taux de traitement.', category: NotifCategory.dashboard, date: DateTime(2026, 5, 4, 9, 0), actionLabel: 'Ouvrir'),
-    NotificationModel(id: 'n6', message: 'L\'invitation Conférence e-gouvernance est maintenant Terminée.', category: NotifCategory.invitation, date: DateTime(2026, 4, 30), isRead: true, relatedResourceId: 'INV-04'),
-    NotificationModel(id: 'n7', message: 'Nouvel utilisateur créé : Fatou Ouédraogo (usager).', category: NotifCategory.admin, date: DateTime(2026, 4, 28), isRead: true),
-  ];
+
 }

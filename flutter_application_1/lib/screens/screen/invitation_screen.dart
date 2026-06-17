@@ -5,14 +5,12 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import 'package:url_launcher/url_launcher.dart'; 
 import 'package:flutter_application_1/bloc/all_blocs.dart';
-import 'package:flutter_application_1/screens/edit_invitation_screen.dart';
-import '../models/models.dart';
-import '../services/services.dart';
-import '../theme/app_theme.dart';
-import '../widget/shared_widget.dart';
-import '../core/api_constants.dart';
-import 'package:flutter_application_1/screens/pdf_viewer_page.dart';
-import 'package:flutter_application_1/screens/screen/invitation_screen.dart';
+
+import '../../models/models.dart';
+import '../../services/services.dart';
+import '../../theme/app_theme.dart';
+import '../../widget/shared_widget.dart';
+import '../../core/api_constants.dart';
 
 // Fonction utilitaire pour gérer l'ouverture des pièces jointes et des exports
 Future<void> ouvrirPieceJointe(String urlOrPath) async {
@@ -22,14 +20,14 @@ Future<void> ouvrirPieceJointe(String urlOrPath) async {
   }
 }
 
-class InvitationsScreen extends StatefulWidget {
-  const InvitationsScreen({super.key});
+class InvitationScreen extends StatefulWidget {
+  const InvitationScreen({super.key});
 
   @override
-  State<InvitationsScreen> createState() => _InvitationsScreenState();
+  State<InvitationScreen> createState() => _InvitationsScreenState();
 }
 
-class _InvitationsScreenState extends State<InvitationsScreen> {
+class _InvitationsScreenState extends State<InvitationScreen> {
   String _search = '';
   InvitationStatus? _filterStatus;
 
@@ -88,44 +86,13 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
               ),
             ],
           ),
-          
-floatingActionButton: Row(
-  mainAxisAlignment: MainAxisAlignment.end,
-  children: [
-    // Premier bouton : "Enregistrer" (le tien)
-    FloatingActionButton.extended(
-      heroTag: 'fab_enregistrer',
-      onPressed: () => _showAddDialog(context),
-      backgroundColor: const Color.fromARGB(255, 6, 69, 21),
-      foregroundColor: Colors.white,
-      icon: const Icon(Icons.add),
-      label: const Text("Enregistrer"),
-    ),
-    
-    const SizedBox(width: 10), // Espace entre les deux boutons
-
-    // Second bouton : Un autre bouton avec du texte
-FloatingActionButton.extended(
-  heroTag: 'fab_creer',
-  onPressed: () {
-    // 🎯 Ouvre votre page existante en plein écran
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BlocProvider.value(
-          value: context.read<InvitationBloc>(), // Transmet le Bloc pour conserver l'état du formulaire
-          child: const InvitationScreen(), // 👈 Utilise le nom exact de la classe de votre fichier
-        ),
-      ),
-    );
-  },
-  backgroundColor: const Color.fromARGB(255, 2, 46, 18),
-  foregroundColor: Colors.white,
-  icon: const Icon(Icons.edit),
-  label: const Text("Creer"),
-)
-  ],
-),
+          floatingActionButton: FloatingActionButton(
+            heroTag: 'fab_invitations',
+            onPressed: () => _showAddDialog(context),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.add),
+          ),
           body: Column(
             children: [
               Padding(
@@ -621,36 +588,50 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
- void _openFile(BuildContext context, String fileUrlOrName) async {
-  String targetUrl = fileUrlOrName;
+ // ─── 1. OUVERTURE ET TÉLÉCHARGEMENT DE LA PIÈCE JOINTE ──────────────────────
+  void _openFile(BuildContext context, String fileUrlOrName) async {
+    String targetUrl = fileUrlOrName;
 
-  if (fileUrlOrName.contains('chemin:')) {
-    final cheminMatch = RegExp(r"chemin:\s*([^,}]+)").firstMatch(fileUrlOrName);
-    if (cheminMatch != null) targetUrl = cheminMatch.group(1)!.trim();
-  }
-
-  if (!targetUrl.startsWith('http')) {
-    if (targetUrl.startsWith('/')) {
-      targetUrl = targetUrl.substring(1);
+    // Décodage si la chaîne reçue ressemble à "nom: doc.pdf, chemin: 45_doc.pdf"
+    if (fileUrlOrName.contains('chemin:')) {
+      final cheminMatch = RegExp(r"chemin:\s*([^,}]+)").firstMatch(fileUrlOrName);
+      if (cheminMatch != null) targetUrl = cheminMatch.group(1)!.trim();
     }
-    targetUrl = "$_baseUrl/api/files/download/$targetUrl";
+
+    // Si c'est un nom de fichier ou un chemin relatif, on ajoute le préfixe Spring Boot
+    if (!targetUrl.startsWith('http')) {
+      // 🎯 Sécurité : On retire le premier caractère si c'est un slash '/'
+      if (targetUrl.startsWith('/')) {
+        targetUrl = targetUrl.substring(1);
+      }
+      
+      // On s'assure d'avoir une URL propre avec un seul slash après download
+      targetUrl = "$_baseUrl/api/files/download/$targetUrl";
+    }
+
+    // Petit log de contrôle bien pratique en console de debug 
+    print("🎯 URL finale appelée : $targetUrl");
+
+    final Uri url = Uri.parse(targetUrl);
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        throw 'Impossible d\'ouvrir le lien système';
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de l\'ouverture : $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
-  print("🎯 URL finale appelée pour l'IFrame : $targetUrl");
-
-  // Redirection vers notre composant IFrame au lieu d'ouvrir une application externe !
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => PdfViewerPage(
-        pdfUrl: targetUrl,
-        title: targetUrl.split('/').last,
-      ),
-    ),
-  );
-}
   // ─── 2. EXPORT ET TÉLÉCHARGEMENT DU DOCUMENT PDF ────────────────────────────
- /* Future<void> _exportPdf(BuildContext context) async {
+  Future<void> _exportPdf(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Export PDF en cours…'),
@@ -699,7 +680,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
         SnackBar(content: Text('Échec de l\'export Word : $e'), backgroundColor: Colors.red),
       );
     }
-  }*/
+  }
 
   void _showAffectationModal(BuildContext context) async {
     setState(() {
@@ -960,90 +941,51 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
               ),
 
               const SizedBox(height: 20),
-// ─── ACTIONS : MODIFIER ET SUPPRIMER ─────────────────────────────────────────
-Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
-  child: Row(
-    children: [
-      // Bouton Modifier
-      Expanded(
-        child: ElevatedButton.icon(
-          onPressed: () {
-              if (invitationAffichee.status == 'TERMINEE') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Impossible de modifier une invitation terminée.'),
-                    backgroundColor: Colors.red,
+
+              // ── Bouton Exporter en PDF ────────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: () => _exportPdf(context),
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                  label: const Text('Exporter en PDF', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color.fromARGB(255, 4, 64, 29),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                );
-              } else {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => EditInvitationPage(inv: invitationAffichee)),
-  );
-            };
-            // Navigator.push(context, MaterialPageRoute(builder: (context) => EditInvitationPage(inv: invitationAffichee)));
-          },
-          icon: const Icon(Icons.edit, size: 18),
-          label: const Text('Modifier'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color.fromARGB(255, 4, 67, 30),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-      ),
-      const SizedBox(width: 12),
-      // Bouton Supprimer
-      Expanded(
-        child: OutlinedButton.icon(
-          onPressed: () => _confirmerSuppression(context),
-          icon: const Icon(Icons.delete_outline, size: 18),
-          label: const Text('Supprimer'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.red,
-            side: const BorderSide(color: Colors.red, width: 1.5),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-      ),
-    ],
-  ),
-),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // ── Bouton Exporter en Word ───────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: () => _exportWord(context),
+                  icon: const Icon(Icons.download_outlined, size: 20),
+                  label: const Text('Exporter en Word', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black87,
+                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
             ],
           );
         },
       ),
     );
   }
-
-  void _confirmerSuppression(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmer la suppression'),
-        content: const Text('Êtes-vous sûr de vouloir supprimer cette invitation ? Cette action est irréversible.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              context.read<InvitationBloc>().add(DeleteInvitation(widget.inv.id.toString()));
-              Navigator.pop(ctx);
-              Navigator.pop(context); // Ferme aussi la page de détail après suppression
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Supprimer', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Modal d'affectation d'agents
 // ─────────────────────────────────────────────────────────────────────────────

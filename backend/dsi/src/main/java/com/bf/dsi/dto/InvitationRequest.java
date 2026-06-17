@@ -10,6 +10,6 @@ public class InvitationRequest {
     private Integer nombreParticipants;
     private String lieu;
     private String visibilite;
-    private Long structureEmettriceId;
+   private String structureEmettrice;
     private String statut;
 }

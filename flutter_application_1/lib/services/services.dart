@@ -100,9 +100,20 @@ class InvitationService {
   }
 
   Future<Invitation> update(String id, Map<String, dynamic> data) async {
-    try { return Invitation.fromJson((await _api.dio.put('${ApiConstants.invitations}/$id', data: data)).data); }
-    on DioException catch (e) { throw ApiException.fromDio(e); }
+  print("--- DÉBUT DE LA REQUÊTE ---");
+  print("URL: ${ApiConstants.invitations}/$id");
+  print("DATA: $data");
+  try { 
+    final res = await _api.dio.put('${ApiConstants.invitations}/$id', data: data);
+    print("--- SUCCÈS: ${res.statusCode} ---");
+    return Invitation.fromJson(res.data);
+  } on DioException catch (e) {
+    print("--- ERREUR DIO ---");
+    print("Message: ${e.message}");
+    print("Response: ${e.response?.data}"); // C'est ici que tu verras pourquoi ça échoue (400, 403, 404)
+    throw ApiException.fromDio(e); 
   }
+}
 
   Future<void> delete(String id) async {
     try { await _api.dio.delete('${ApiConstants.invitations}/$id'); }
@@ -204,7 +215,16 @@ class TicketService {
       return Ticket.fromJson(res.data, currentUserId: currentUserId);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
+ Future<void> delete(String id, {String? currentUserId}) async {
+    try {
+      // Remplacer .deleteTicket par .supprimerTicket qui est le vrai nom dans ton ApiClient
+      await _api.supprimerTicket(int.parse(id));
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
 }
+
 
 // ════════════════════════════════════════════════════════════════════
 // AUTH SERVICE

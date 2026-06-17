@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../widget/shared_widget.dart';
 import 'tickets_screen.dart'; // Import nécessaire pour la redirection vers les détails
+import 'invitations_screen.dart'; // Import nécessaire pour la redirection vers les détails des invitations
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -62,6 +63,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     } else if (n.category == NotifCategory.invitation) {
       // Traitement ou navigation spécifique aux invitations
+      Navigator.push(
+      context,
+      MaterialPageRoute(
+        // Ajuste le nom du widget selon l'écran de destination de tes invitations
+        // Si tu as un écran de détail, tu peux lui passer l'ID : n.relatedResourceId
+        builder: (_) => const InvitationsScreen(), 
+      ),
+    );
     }
     // Ajoute d'autres aiguillages ici selon les besoins de ton modèle de données
   }
