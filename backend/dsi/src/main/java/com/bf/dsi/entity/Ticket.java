@@ -38,6 +38,9 @@ public class Ticket {
     @Column(columnDefinition = "TEXT")
     private String solution;
 
+    @Column(name = "whatsapp", length = 20)
+    private String whatsapp;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "structure_id")
     private Structure structure;

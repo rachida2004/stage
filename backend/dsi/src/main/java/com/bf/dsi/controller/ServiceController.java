@@ -14,7 +14,13 @@ public class ServiceController {
     private ServiceRepository repository;
 
     @GetMapping
-    public List<Service> listerServices() {
+    public List<Service> listerServices(@RequestParam(required = false) Long structureId) {
+        // 🎯 Si Flutter passe un structureId dans les paramètres de la requête, 
+        // on appelle notre nouvelle méthode filtrée en Base de Données
+        if (structureId != null) {
+            return repository.findByStructureId(structureId);
+        }
+        // Sinon, on renvoie la liste globale de tous les services comme avant
         return repository.findAll();
     }
 

@@ -2,12 +2,15 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart' as url_launcher; 
+import 'package:url_launcher/url_launcher.dart' as url_launcher;
 import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../widget/shared_widget.dart';
 import '../bloc/all_blocs.dart';
 
+// ═══════════════════════════════════════════════════════════════════
+// SCREEN PRINCIPAL : Liste des tickets
+// ═══════════════════════════════════════════════════════════════════
 class TicketsScreen extends StatefulWidget {
   const TicketsScreen({super.key});
   @override
@@ -47,8 +50,6 @@ class _TicketsScreenState extends State<TicketsScreen> {
             appBar: AppBar(title: const Text('Tickets')),
             body: Center(child: Text('Erreur : ${state.msg}', style: const TextStyle(color: Colors.red))),
           );
-        } else {
-          allTickets = SampleData.tickets;
         }
 
         final filtered = _applyFilters(allTickets);
@@ -60,11 +61,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
               if (isLoading)
                 const Padding(
                   padding: EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 ),
               IconButton(
                 icon: const Icon(Icons.refresh_outlined, size: 20),
@@ -102,8 +99,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                         child: _FilterChip(
                           label: s.label,
                           selected: _filterStatus == s,
-                          onTap: () => setState(
-                              () => _filterStatus = _filterStatus == s ? null : s),
+                          onTap: () => setState(() => _filterStatus = _filterStatus == s ? null : s),
                         ),
                       )),
                   ]),
@@ -113,29 +109,17 @@ class _TicketsScreenState extends State<TicketsScreen> {
             const SizedBox(height: 8),
             Expanded(
               child: filtered.isEmpty && !isLoading
-                  ? const Center(
-                      child: Text(
-                        'Aucun ticket trouvé',
-                        style: TextStyle(color: AppColors.muted),
-                      ),
-                    )
+                  ? const Center(child: Text('Aucun ticket trouvé', style: TextStyle(color: AppColors.muted)))
                   : RefreshIndicator(
-                      onRefresh: () async =>
-                          context.read<TicketBloc>().add(LoadTickets()),
+                      onRefresh: () async => context.read<TicketBloc>().add(LoadTickets()),
                       child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         itemCount: filtered.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (ctx, i) => _TicketCard(
                           ticket: filtered[i],
-                          onTap: () => Navigator.push(
-                            ctx,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  _TicketDetailScreen(ticket: filtered[i]),
-                            ),
-                          ),
+                          onTap: () => Navigator.push(ctx,
+                            MaterialPageRoute(builder: (_) => TicketDetailScreen(ticket: filtered[i]))),
                         ),
                       ),
                     ),
@@ -150,20 +134,24 @@ class _TicketsScreenState extends State<TicketsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _CreateTicketSheet(), 
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => BlocProvider.value(
+        value: context.read<TicketBloc>(),
+        child: const _CreateTicketSheet(),
+      ),
       backgroundColor: Colors.white,
     );
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// WIDGET : Chip de filtre
+// ═══════════════════════════════════════════════════════════════════
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _FilterChip(
-      {required this.label, required this.selected, required this.onTap});
+  const _FilterChip({required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -174,20 +162,19 @@ class _FilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? AppColors.primary : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: 0.5),
+          border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: 0.5),
         ),
         child: Text(label,
-          style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
               color: selected ? Colors.white : AppColors.muted)),
       ),
     );
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// WIDGET : Carte ticket dans la liste
+// ═══════════════════════════════════════════════════════════════════
 class _TicketCard extends StatelessWidget {
   final Ticket ticket;
   final VoidCallback onTap;
@@ -197,43 +184,28 @@ class _TicketCard extends StatelessWidget {
   Widget build(BuildContext context) {
     Color iconBg;
     switch (ticket.priority) {
-      case TicketPriority.haute:
-        iconBg = AppColors.dangerLight;
-        break;
-      case TicketPriority.normale:
-        iconBg = AppColors.warningLight;
-        break;
-      case TicketPriority.basse:
-        iconBg = AppColors.successLight;
-        break;
+      case TicketPriority.haute: iconBg = AppColors.dangerLight; break;
+      case TicketPriority.normale: iconBg = AppColors.warningLight; break;
+      case TicketPriority.basse: iconBg = AppColors.successLight; break;
     }
     return AppCard(
       onTap: onTap,
       child: Row(children: [
         Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-              color: iconBg, borderRadius: BorderRadius.circular(10)),
-          child: Center(
-              child: Text('#${ticket.id}',
-                  style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.muted))),
+          width: 42, height: 42,
+          decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(10)),
+          child: Center(child: Text('#${ticket.id}',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.muted))),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(ticket.description,
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 3),
             Text(
-              ticket.agentAssigneNom != null
-                  ? 'Agent: ${ticket.agentAssigneNom}'
-                  : 'Non affecté',
+              ticket.agentAssigneNom != null ? 'Agent: ${ticket.agentAssigneNom}' : 'Non affecté',
               style: const TextStyle(fontSize: 11, color: AppColors.muted),
             ),
             const SizedBox(height: 6),
@@ -250,36 +222,48 @@ class _TicketCard extends StatelessWidget {
   }
 }
 
-class _TicketDetailScreen extends StatefulWidget {
+// ═══════════════════════════════════════════════════════════════════
+// SCREEN : Détail d'un ticket
+// ═══════════════════════════════════════════════════════════════════
+class TicketDetailScreen extends StatefulWidget {
   final Ticket ticket;
-  const _TicketDetailScreen({required this.ticket});
+  const TicketDetailScreen({super.key, required this.ticket});
 
   @override
-  State<_TicketDetailScreen> createState() => _TicketDetailScreenState();
+  State<TicketDetailScreen> createState() => _TicketDetailScreenState();
 }
 
-class _TicketDetailScreenState extends State<_TicketDetailScreen> {
-  final _msgCtrl = TextEditingController();
-
+class _TicketDetailScreenState extends State<TicketDetailScreen> {
   @override
   void initState() {
     super.initState();
     context.read<TicketBloc>().add(LoadTicketDetail(widget.ticket.id));
   }
 
-  @override
-  void dispose() {
-    _msgCtrl.dispose();
-    super.dispose();
-  }
-
-  void _sendMessage() {
-    if (_msgCtrl.text.trim().isEmpty) return;
-    
-    context.read<TicketBloc>().add(
-          EnvoyerMessage(widget.ticket.id, _msgCtrl.text.trim()),
+  void _showDeleteConfirmationDialog(BuildContext context, String ticketId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Supprimer le ticket ?'),
+          content: const Text('Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: () {
+                context.read<TicketBloc>().add(DeleteTicket(ticketId));
+                Navigator.pop(dialogContext);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Supprimer'),
+            ),
+          ],
         );
-    _msgCtrl.clear();
+      },
+    );
   }
 
   void _ouvrirDialogueAffectation(BuildContext context, String ticketId) {
@@ -295,24 +279,14 @@ class _TicketDetailScreenState extends State<_TicketDetailScreen> {
             bloc: context.read<AdminBloc>(),
             builder: (context, state) {
               if (state is AdminLoading) {
-                return const SizedBox(
-                  height: 60,
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()));
               }
               if (state is UsersLoaded) {
                 return DropdownButtonFormField<AppUser>(
-                  decoration: const InputDecoration(
-                    labelText: "Sélectionner un agent",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: "Sélectionner un agent", border: OutlineInputBorder()),
                   value: agentSelectionne,
-                  items: state.users.map((user) {
-                    return DropdownMenuItem<AppUser>(
-                      value: user,
-                      child: Text("${user.nom} ${user.prenom}"),
-                    );
-                  }).toList(),
+                  items: state.users.map((user) => DropdownMenuItem<AppUser>(
+                    value: user, child: Text("${user.nom} ${user.prenom}"))).toList(),
                   onChanged: (val) => agentSelectionne = val,
                 );
               }
@@ -320,16 +294,11 @@ class _TicketDetailScreenState extends State<_TicketDetailScreen> {
             },
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text("Annuler"),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Annuler")),
             ElevatedButton(
               onPressed: () {
                 if (agentSelectionne != null) {
-                  context.read<TicketBloc>().add(
-                    AffecterAgentTkt(ticketId, agentSelectionne!.id.toString()),
-                  );
+                  context.read<TicketBloc>().add(AffecterAgentTkt(ticketId, agentSelectionne!.id.toString()));
                   Navigator.pop(dialogContext);
                 }
               },
@@ -341,265 +310,406 @@ class _TicketDetailScreenState extends State<_TicketDetailScreen> {
     );
   }
 
+  /// Ouvre WhatsApp via lien direct
+  Future<void> _ouvrirWhatsApp(BuildContext context, String numero) async {
+    // Nettoie le numéro : enlève +, espaces, tirets
+    final clean = numero.replaceAll(RegExp(r'[^\d]'), '');
+    final uri = Uri.parse('https://wa.me/$clean');
+    try {
+      if (await url_launcher.canLaunchUrl(uri)) {
+        await url_launcher.launchUrl(uri, mode: url_launcher.LaunchMode.externalApplication);
+      } else {
+        throw "Impossible d'ouvrir WhatsApp";
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<TicketBloc, TicketState>(
-      builder: (context, state) {
-        Ticket t = widget.ticket;
-        
-        if (state is TicketDetailL) {
-          t = state.ticket;
+    return BlocListener<TicketBloc, TicketState>(
+      listener: (context, state) {
+        if (state is TicketDeletedSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Ticket supprimé avec succès')),
+          );
+          context.read<TicketBloc>().add(LoadTickets());
+          Navigator.pop(context);
         }
+      },
+      child: BlocBuilder<TicketBloc, TicketState>(
+        builder: (context, state) {
+          Ticket t = widget.ticket;
+          if (state is TicketDetailL) t = state.ticket;
 
-        if (state is TicketError && state.msg.isNotEmpty) {
+          if (state is TicketError && state.msg.isNotEmpty) {
+            return Scaffold(
+              appBar: AppBar(title: Text('#${widget.ticket.id}')),
+              body: Center(
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(state.msg, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () => context.read<TicketBloc>().add(LoadTicketDetail(widget.ticket.id)),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Réessayer'),
+                  ),
+                ]),
+              ),
+            );
+          }
+
+          // Récupération du numéro WhatsApp si disponible dans le ticket
+          final String? whatsapp = t.whatsapp;
+
           return Scaffold(
-            appBar: AppBar(title: Text('#${widget.ticket.id}')),
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      state.msg,
-                      style: const TextStyle(color: Colors.red),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () => context.read<TicketBloc>().add(LoadTicketDetail(widget.ticket.id)),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Réessayer'),
-                    ),
+            appBar: AppBar(
+              title: Text('#${t.id}', style: const TextStyle(fontSize: 15)),
+              actions: [
+                // Bouton WhatsApp dans l'AppBar si numéro disponible
+                if (whatsapp != null && whatsapp.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.chat, color: Color(0xFF25D366)),
+                    tooltip: 'Contacter sur WhatsApp',
+                    onPressed: () => _ouvrirWhatsApp(context, whatsapp),
+                  ),
+                PopupMenuButton<String>(
+                  onSelected: (v) {
+                    if (v == 'assign') _ouvrirDialogueAffectation(context, t.id);
+                    else if (v == 'pause') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause));
+                    else if (v == 'resolve') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.resolu));
+                    else if (v == 'close') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.ferme));
+                    else if (v == 'delete') _showDeleteConfirmationDialog(context, t.id);
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'assign', child: Text('Affecter un agent')),
+                    const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
+                    const PopupMenuItem(value: 'resolve', child: Text('Marquer résolu')),
+                    const PopupMenuItem(value: 'close', child: Text('Fermer le ticket')),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(value: 'delete', child: Text('Supprimer', style: TextStyle(color: Colors.red))),
                   ],
                 ),
-              ),
+              ],
             ),
-          );
-        }
+            body: SingleChildScrollView(
+              child: Column(children: [
+                if (state is TicketLoading) const LinearProgressIndicator(minHeight: 2),
 
-        final List<TicketMessage> currentMessages = t.communications;
+                // ── Infos ticket ───────────────────────────────────────
+                Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(t.description, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      StatusBadge.fromTicketStatus(t.status),
+                      const SizedBox(width: 8),
+                      PriorityBadge(priority: t.priority),
+                    ]),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      const Icon(Icons.business_outlined, size: 14, color: AppColors.muted),
+                      const SizedBox(width: 4),
+                      Text(t.structure, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.person_outline, size: 14, color: AppColors.muted),
+                      const SizedBox(width: 4),
+                      Text(t.agentAssigneNom ?? 'Non affecté',
+                          style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                    ]),
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Text('#${t.id}', style: const TextStyle(fontSize: 15)),
-            actions: [
-              PopupMenuButton<String>(
-                onSelected: (v) {
-                  if (v == 'assign') {
-                    _ouvrirDialogueAffectation(context, t.id);
-                  } else if (v == 'pause') {
-                    context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause));
-                  } else if (v == 'resolve') {
-                    context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.resolu));
-                  } else if (v == 'close') {
-                    context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.ferme));
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'assign', child: Text('Affecter un agent')),
-                  const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
-                  const PopupMenuItem(value: 'resolve', child: Text('Marquer résolu')),
-                  const PopupMenuItem(value: 'close', child: Text('Fermer le ticket')),
-                ],
-              ),
-            ],
-          ),
-          body: Column(children: [
-            if (state is TicketLoading)
-              const LinearProgressIndicator(minHeight: 2),
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(t.description,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  StatusBadge.fromTicketStatus(t.status),
-                  const SizedBox(width: 8),
-                  PriorityBadge(priority: t.priority),
-                ]),
-                const SizedBox(height: 8),
-                Row(children: [
-                  const Icon(Icons.business_outlined, size: 14, color: AppColors.muted),
-                  const SizedBox(width: 4),
-                  Text(t.structure,
-                      style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-                  const SizedBox(width: 12),
-                  const Icon(Icons.person_outline, size: 14, color: AppColors.muted),
-                  const SizedBox(width: 4),
-                  Text(t.agentAssigneNom ?? 'Non affecté',
-                      style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-                ]),
-
-                if (t.attachmentUrl != null && t.attachmentUrl!.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () async {
-                      final String baseUrl = "http://localhost:8085";
-                      final String fullUrl = t.attachmentUrl!.startsWith('http')
-                          ? t.attachmentUrl!
-                          : '$baseUrl${t.attachmentUrl!}';
-
-                      final Uri url = Uri.parse(fullUrl);
-                      try {
-                        if (await url_launcher.canLaunchUrl(url)) {
-                          await url_launcher.launchUrl(
-                            url,
-                            mode: url_launcher.LaunchMode.externalApplication,
-                          );
-                        } else {
-                          throw "Impossible d'accéder au fichier";
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Impossible d\'ouvrir la pièce jointe : $e')),
-                          );
-                        }
-                      }
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.attach_file, size: 18, color: AppColors.primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              t.attachmentUrl!.split('/').last,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppColors.primary,
-                                decoration: TextDecoration.underline,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                    // ── Contact WhatsApp ────────────────────────────────
+                    if (whatsapp != null && whatsapp.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      InkWell(
+                        onTap: () => _ouvrirWhatsApp(context, whatsapp),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF25D366).withOpacity(0.4)),
                           ),
-                          const Icon(Icons.open_in_new, size: 14, color: AppColors.primary),
-                        ],
+                          child: Row(children: [
+                            const Icon(Icons.chat_bubble_outline, size: 16, color: Color(0xFF25D366)),
+                            const SizedBox(width: 8),
+                            Text(whatsapp, style: const TextStyle(
+                                fontSize: 13, color: Color(0xFF128C7E), fontWeight: FontWeight.w500)),
+                            const Spacer(),
+                            const Text('Ouvrir WhatsApp',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF25D366))),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.open_in_new, size: 13, color: Color(0xFF25D366)),
+                          ]),
+                        ),
+                      ),
+                    ],
+
+                    // ── Pièces jointes (galerie d'aperçu) ──────────────
+                    if (t.attachments.isNotEmpty || (t.attachmentUrl != null && t.attachmentUrl!.isNotEmpty)) ...[
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      const Text('Pièces jointes',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.muted)),
+                      const SizedBox(height: 8),
+                      _AttachmentGallery(
+                        urls: t.attachments.isNotEmpty
+                            ? t.attachments
+                            : [t.attachmentUrl!], // fallback compat
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
+
+                    // ── Boutons d'action ────────────────────────────────
+                    Row(children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause)),
+                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+                          child: const Text('En pause', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.resolu)),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.success,
+                              padding: const EdgeInsets.symmetric(vertical: 10)),
+                          child: const Text('Résolu', style: TextStyle(fontSize: 12, color: Colors.white)),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    // ── Bouton supprimer centré ─────────────────────────
+                    Center(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showDeleteConfirmationDialog(context, t.id),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red, width: 1.0),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.delete_outline, size: 16),
+                        label: const Text('Supprimer le ticket',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                       ),
                     ),
-                  ),
-                ],
-
-                const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause));
-                      },
-                      style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 10)),
-                      child: const Text('En pause', style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.resolu));
-                      },
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.success,
-                          padding: const EdgeInsets.symmetric(vertical: 10)),
-                      child: const Text('Résolu', style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                ]),
-              ]),
-            ),
-            const Divider(height: 0),
-            
-            Expanded(
-              child: currentMessages.isEmpty
-                  ? const Center(
-                      child: Text('Aucun message',
-                          style: TextStyle(color: AppColors.muted)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: currentMessages.length,
-                      itemBuilder: (context, i) {
-                        return _MessageBubble(msg: currentMessages[i]);
-                      },
-                    ),
-            ),
-            const Divider(height: 0),
-            Container(
-              padding: EdgeInsets.only(
-                left: 12,
-                right: 12,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 12,
-                top: 8,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: AppColors.border, width: 0.5)),
-              ),
-              child: Row(children: [
-                Expanded(
-                  child: TextField(
-                    controller: _msgCtrl,
-                    decoration: const InputDecoration(
-                      hintText: 'Ajouter un message...',
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.send, color: AppColors.primary),
-                  onPressed: _sendMessage,
+                    const SizedBox(height: 8),
+                  ]),
                 ),
               ]),
             ),
-          ]),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  final TicketMessage msg;
+// ═══════════════════════════════════════════════════════════════════
+// WIDGET : Galerie d'aperçu des pièces jointes
+// ═══════════════════════════════════════════════════════════════════
+class _AttachmentGallery extends StatelessWidget {
+  final List<String> urls;
+  const _AttachmentGallery({required this.urls});
 
-  const _MessageBubble({required this.msg});
+  static const String _base = 'http://localhost:8085';
+
+  /// S'assure que l'URL est absolue
+  String _abs(String url) =>
+      url.startsWith('http') ? url : '$_base$url';
+
+  bool _isImage(String url) {
+    final ext = url.split('/').last.split('.').last.toLowerCase().split('?').first;
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(ext);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Align(
-        alignment: msg.isSelf ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: msg.isSelf ? AppColors.primary : Colors.grey[200],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!msg.isSelf)
-                Text(
-                  msg.auteur,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
-                ),
-              Text(
-                msg.message,
-                style: TextStyle(color: msg.isSelf ? Colors.white : Colors.black),
+    final absUrls = urls.map(_abs).toList();
+    final images = absUrls.where(_isImage).toList();
+    final others = absUrls.where((u) => !_isImage(u)).toList();
+
+    if (absUrls.isEmpty) return const SizedBox.shrink();
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (images.isNotEmpty)
+        SizedBox(
+          height: images.length == 1 ? 180 : 120,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: images.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (ctx, i) => GestureDetector(
+              onTap: () => _ouvrirApercu(ctx, images, i),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      images[i],
+                      width: images.length == 1 ? 280 : 120,
+                      height: images.length == 1 ? 180 : 120,
+                      fit: BoxFit.cover,
+                      headers: const {'Cache-Control': 'no-cache'},
+                      loadingBuilder: (ctx, child, progress) => progress == null
+                          ? child
+                          : Container(
+                              width: images.length == 1 ? 280 : 120,
+                              height: images.length == 1 ? 180 : 120,
+                              color: AppColors.surface,
+                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
+                      errorBuilder: (_, error, __) => Container(
+                        width: images.length == 1 ? 280 : 120,
+                        height: images.length == 1 ? 180 : 120,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(Icons.image_not_supported_outlined, color: AppColors.muted, size: 28),
+                          const SizedBox(height: 4),
+                          Text(images[i].split('/').last,
+                              style: const TextStyle(fontSize: 10, color: AppColors.muted),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ]),
+                      ),
+                    ),
+                  ),
+                  // Indicateur zoom
+                  Positioned(
+                    bottom: 4, right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
+          ),
+        ),
+      if (others.isNotEmpty) const SizedBox(height: 8),
+      ...others.map((url) => _FileTile(url: url)),
+    ]);
+  }
+
+  void _ouvrirApercu(BuildContext context, List<String> images, int index) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => _ImagePreviewScreen(images: images, initialIndex: index),
+    ));
+  }
+}
+
+class _FileTile extends StatelessWidget {
+  final String url;
+  const _FileTile({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = url.split('/').last;
+    return InkWell(
+      onTap: () async {
+        final uri = Uri.parse(url.startsWith('http') ? url : 'http://localhost:8085$url');
+        if (await url_launcher.canLaunchUrl(uri)) {
+          await url_launcher.launchUrl(uri, mode: url_launcher.LaunchMode.externalApplication);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          const Icon(Icons.attach_file, size: 18, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(child: Text(name,
+              style: const TextStyle(fontSize: 13, color: AppColors.primary,
+                  decoration: TextDecoration.underline, fontWeight: FontWeight.w500),
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
+          const Icon(Icons.open_in_new, size: 14, color: AppColors.primary),
+        ]),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCREEN : Aperçu image zoomable
+// ═══════════════════════════════════════════════════════════════════
+class _ImagePreviewScreen extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+  const _ImagePreviewScreen({required this.images, required this.initialIndex});
+
+  @override
+  State<_ImagePreviewScreen> createState() => _ImagePreviewScreenState();
+}
+
+class _ImagePreviewScreenState extends State<_ImagePreviewScreen> {
+  late final PageController _pageCtrl;
+  late int _current;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.initialIndex;
+    _pageCtrl = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('${_current + 1} / ${widget.images.length}',
+            style: const TextStyle(color: Colors.white)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.open_in_new, color: Colors.white),
+            onPressed: () async {
+              final uri = Uri.parse(widget.images[_current]);
+              if (await url_launcher.canLaunchUrl(uri)) {
+                await url_launcher.launchUrl(uri, mode: url_launcher.LaunchMode.externalApplication);
+              }
+            },
+          ),
+        ],
+      ),
+      body: PageView.builder(
+        controller: _pageCtrl,
+        itemCount: widget.images.length,
+        onPageChanged: (i) => setState(() => _current = i),
+        itemBuilder: (ctx, i) => InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 5.0,
+          child: Center(
+            child: Image.network(widget.images[i],
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white, size: 64)),
           ),
         ),
       ),
@@ -607,7 +717,12 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// SHEET : Création d'un ticket
+// ═══════════════════════════════════════════════════════════════════
 class _CreateTicketSheet extends StatefulWidget {
+  const _CreateTicketSheet();
+
   @override
   State<_CreateTicketSheet> createState() => _CreateTicketSheetState();
 }
@@ -615,37 +730,77 @@ class _CreateTicketSheet extends StatefulWidget {
 class _CreateTicketSheetState extends State<_CreateTicketSheet> {
   final _formKey = GlobalKey<FormState>();
   final _descCtrl = TextEditingController();
-  final _structureCtrl = TextEditingController(); 
+  final _whatsappCtrl = TextEditingController();
   TicketPriority _priority = TicketPriority.normale;
-  PlatformFile? _selectedFile;
-  final TextEditingController _serviceCtrl = TextEditingController();
+  List<PlatformFile> _selectedFiles = [];
+
+  // Sélections dropdown
+  Structure? _structureSelectionnee;
+  Service? _serviceSelectionne;
+  List<Structure> _structures = [];
+  List<Service> _services = [];
+  bool _loadingStructures = true;
+  bool _loadingServices = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerStructures();
+  }
 
   @override
   void dispose() {
     _descCtrl.dispose();
-    _structureCtrl.dispose();
-    _serviceCtrl.dispose();
+    _whatsappCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles();
+  Future<void> _chargerStructures() async {
+    try {
+      // On déclenche le chargement via le BLoC ou directement via le service
+      // Pour rester simple, on utilise un appel direct à l'ApiService
+      final bloc = context.read<TicketBloc>();
+      bloc.add(LoadStructures());
+    } catch (_) {}
+  }
+
+  Future<void> _chargerServices(int structureId) async {
+    setState(() { _loadingServices = true; _services = []; _serviceSelectionne = null; });
+    try {
+      context.read<TicketBloc>().add(LoadServices(structureId));
+    } catch (_) {
+      setState(() => _loadingServices = false);
+    }
+  }
+
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.image, // Images uniquement pour les captures
+      withData: true,
+    );
     if (result != null && result.files.isNotEmpty) {
       setState(() {
-        _selectedFile = result.files.first;
+        // Évite les doublons
+        final noms = _selectedFiles.map((f) => f.name).toSet();
+        for (final f in result.files) {
+          if (!noms.contains(f.name)) _selectedFiles.add(f);
+        }
       });
     }
   }
+
+  void _removeFile(int index) => setState(() => _selectedFiles.removeAt(index));
 
   void _submit() {
     if (_formKey.currentState!.validate()) {
       context.read<TicketBloc>().add(
         CreateTicket(
           description: _descCtrl.text.trim(),
-          structure: _structureCtrl.text.trim().isEmpty ? "Non spécifiée" : _structureCtrl.text.trim(),
+          structure: _structureSelectionnee?.nom ?? '',
           priority: _priority,
-          attachmentBytes: _selectedFile?.bytes, 
-          attachmentName: _selectedFile?.name,
+          attachments: _selectedFiles,
+          whatsapp: _whatsappCtrl.text.trim().isEmpty ? null : _whatsappCtrl.text.trim(),
         ),
       );
       Navigator.pop(context);
@@ -654,80 +809,253 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: Form(
-        key: _formKey,
-        child: SingleChildScrollView( 
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Créer un nouveau Ticket', 
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _descCtrl,
-                decoration: const InputDecoration(labelText: 'Description / Problème'),
-                maxLines: 3,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _structureCtrl,
-                decoration: const InputDecoration(labelText: 'Structure '),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _serviceCtrl,
-                decoration: const InputDecoration(labelText: ' Service concerné'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<TicketPriority>(
-                value: _priority,
-                decoration: const InputDecoration(labelText: 'Priorité'),
-                items: TicketPriority.values.map((p) {
-                  return DropdownMenuItem(value: p, child: Text(p.name.toUpperCase()));
-                }).toList(),
-                onChanged: (val) => setState(() => _priority = val!),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _pickFile,
-                    icon: const Icon(Icons.attach_file),
-                    label: const Text('Joindre un fichier'),
+    return BlocListener<TicketBloc, TicketState>(
+      listener: (ctx, state) {
+        if (state is StructuresLoaded) {
+          setState(() { _structures = state.structures; _loadingStructures = false; });
+        }
+        if (state is ServicesLoaded) {
+          setState(() { _services = state.services; _loadingServices = false; });
+        }
+      },
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16, right: 16, top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Titre + poignée
+                Center(child: Container(width: 40, height: 4,
+                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)))),
+                const SizedBox(height: 12),
+                const Text('Nouveau ticket',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+
+                // ── Description ────────────────────────────────────────
+                TextFormField(
+                  controller: _descCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Description / Problème',
+                    alignLabelWithHint: true,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _selectedFile?.name ?? 'Aucun fichier sélectionné',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  maxLines: 3,
+                  validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
+                ),
+                const SizedBox(height: 12),
+
+                // ── Structure (dropdown depuis BDD) ────────────────────
+                _loadingStructures
+                    ? const Center(child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: CircularProgressIndicator(strokeWidth: 2)))
+                    : DropdownButtonFormField<Structure>(
+                        value: _structureSelectionnee,
+                        decoration: const InputDecoration(
+                          labelText: 'Structure',
+                          prefixIcon: Icon(Icons.business_outlined, size: 18),
+                        ),
+                        items: _structures.map((s) => DropdownMenuItem<Structure>(
+                            value: s, child: Text(s.nom))).toList(),
+                        onChanged: (val) {
+                          setState(() => _structureSelectionnee = val);
+                          if (val?.id != null) _chargerServices(val!.id!);
+                        },
+                        validator: (v) => v == null ? 'Sélectionnez une structure' : null,
+                      ),
+                const SizedBox(height: 12),
+
+                // ── Service (dropdown selon structure) ─────────────────
+                if (_structureSelectionnee != null)
+                  _loadingServices
+                      ? const Center(child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: CircularProgressIndicator(strokeWidth: 2)))
+                      : DropdownButtonFormField<Service>(
+                          value: _serviceSelectionne,
+                          decoration: const InputDecoration(
+                            labelText: 'Service concerné',
+                            prefixIcon: Icon(Icons.layers_outlined, size: 18),
+                          ),
+                          items: _services.map((s) => DropdownMenuItem<Service>(
+                              value: s, child: Text(s.nom))).toList(),
+                          onChanged: (val) => setState(() => _serviceSelectionne = val),
+                          validator: (v) => v == null ? 'Sélectionnez un service' : null,
+                        ),
+                if (_structureSelectionnee != null) const SizedBox(height: 12),
+
+                // ── Priorité ───────────────────────────────────────────
+                DropdownButtonFormField<TicketPriority>(
+                  value: _priority,
+                  decoration: const InputDecoration(
+                    labelText: 'Priorité',
+                    prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                  ),
+                  items: TicketPriority.values.map((p) =>
+                      DropdownMenuItem(value: p, child: Text(p.name.toUpperCase()))).toList(),
+                  onChanged: (val) => setState(() => _priority = val!),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Contact WhatsApp ───────────────────────────────────
+                TextFormField(
+                  controller: _whatsappCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Contact WhatsApp (ex: +22670000000)',
+                    prefixIcon: Icon(Icons.chat_bubble_outline, size: 18, color: Color(0xFF25D366)),
+                    hintText: '+226XXXXXXXX',
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+
+                // ── Pièces jointes multiples ────────────────────────────
+                Row(children: [
+                  const Text('Captures / images', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _pickFiles,
+                    icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                    label: const Text('Ajouter', style: TextStyle(fontSize: 12)),
+                  ),
+                ]),
+
+                if (_selectedFiles.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 100,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _selectedFiles.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (ctx, i) {
+                        final f = _selectedFiles[i];
+                        return Stack(
+                          children: [
+                            GestureDetector(
+                              onTap: () => _ouvrirApercuLocal(ctx, i),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: f.bytes != null
+                                    ? Image.memory(f.bytes!, width: 100, height: 100, fit: BoxFit.cover)
+                                    : Container(width: 100, height: 100, color: AppColors.surface,
+                                        child: const Icon(Icons.image, color: AppColors.muted)),
+                              ),
+                            ),
+                            // Bouton supprimer
+                            Positioned(
+                              top: 2, right: 2,
+                              child: GestureDetector(
+                                onTap: () => _removeFile(i),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.all(3),
+                                  child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text('${_selectedFiles.length} fichier(s) sélectionné(s)',
+                      style: const TextStyle(fontSize: 11, color: AppColors.muted)),
                 ],
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _submit,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 10, 68, 11)),
-                  child: const Text('Soumettre', style: TextStyle(color: Colors.white)),
+
+                const SizedBox(height: 20),
+
+                // ── Bouton soumettre ───────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _submit,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(255, 7, 68, 35),
+                        padding: const EdgeInsets.symmetric(vertical: 14)),
+                    child: const Text('Soumettre', style: TextStyle(color: Colors.white)),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _ouvrirApercuLocal(BuildContext context, int index) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => _LocalImagePreviewScreen(
+        files: _selectedFiles, initialIndex: index),
+    ));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCREEN : Aperçu local des images sélectionnées (avant envoi)
+// ═══════════════════════════════════════════════════════════════════
+class _LocalImagePreviewScreen extends StatefulWidget {
+  final List<PlatformFile> files;
+  final int initialIndex;
+  const _LocalImagePreviewScreen({required this.files, required this.initialIndex});
+
+  @override
+  State<_LocalImagePreviewScreen> createState() => _LocalImagePreviewScreenState();
+}
+
+class _LocalImagePreviewScreenState extends State<_LocalImagePreviewScreen> {
+  late int _current;
+  late final PageController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.initialIndex;
+    _ctrl = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(
+          '${widget.files[_current].name}  (${_current + 1}/${widget.files.length})',
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+        ),
+      ),
+      body: PageView.builder(
+        controller: _ctrl,
+        itemCount: widget.files.length,
+        onPageChanged: (i) => setState(() => _current = i),
+        itemBuilder: (ctx, i) {
+          final bytes = widget.files[i].bytes;
+          return InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 5.0,
+            child: Center(
+              child: bytes != null
+                  ? Image.memory(bytes, fit: BoxFit.contain)
+                  : const Icon(Icons.broken_image, color: Colors.white, size: 64),
+            ),
+          );
+        },
       ),
     );
   }

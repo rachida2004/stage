@@ -75,8 +75,9 @@ public class TicketController {
             @RequestParam String description,
             @RequestParam(required = false) String structure,
             @RequestParam(defaultValue = "MOYENNE") String priority,
-            @RequestParam(required = false) MultipartFile file,
-            @RequestParam(required = false) Long createurId) {
+            @RequestParam(required = false) List<MultipartFile> file,
+            @RequestParam(required = false) Long createurId,
+            @RequestParam(required = false) String whatsapp) {
 
         Ticket ticket = Ticket.builder()
             .description(description)
@@ -92,14 +93,22 @@ public class TicketController {
         if (createurId != null)
             utilisateurRepo.findById(createurId).ifPresent(ticket::setCreateur);
 
+        if (whatsapp != null && !whatsapp.isBlank())
+            ticket.setWhatsapp(whatsapp);
+
         Ticket saved = ticketRepo.save(ticket);
 
-        if (file != null && !file.isEmpty()) {
-            String path = fileStorage.store(file, "tickets/" + saved.getId());
-            PieceJointeTicket pj = PieceJointeTicket.builder()
-                .nom(file.getOriginalFilename()).type(file.getContentType())
-                .chemin(path).ticket(saved).build();
-            saved.getPiecesJointes().add(pj);
+        // Enregistrement de TOUTES les pièces jointes
+        if (file != null) {
+            for (MultipartFile f : file) {
+                if (f != null && !f.isEmpty()) {
+                    String path = fileStorage.store(f, "tickets/" + saved.getId());
+                    PieceJointeTicket pj = PieceJointeTicket.builder()
+                            .nom(f.getOriginalFilename()).type(f.getContentType())
+                            .chemin(path).ticket(saved).build();
+                    saved.getPiecesJointes().add(pj);
+                }
+            }
             ticketRepo.save(saved);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
@@ -202,6 +211,7 @@ public class TicketController {
         m.put("priority", t.getPriorite());
         m.put("createdAt", t.getDateCreation());
         m.put("solution", t.getSolution());
+        if (t.getWhatsapp() != null) m.put("whatsapp", t.getWhatsapp());
         
         if (t.getCreateur() != null) m.put("createur", userMap(t.getCreateur()));
         
@@ -218,8 +228,14 @@ public class TicketController {
                 "createdAt", c.getDate() != null ? c.getDate() : ""
             )).toList());
             
-        t.getPiecesJointes().stream().findFirst()
-            .ifPresent(pj -> m.put("attachmentUrl", "/uploads/" + pj.getChemin()));
+             // Toutes les PJ avec URL absolue
+        List<Map<String, String>> pjs = t.getPiecesJointes().stream()
+            .map(pj -> Map.of("url", "http://localhost:8085/uploads/" + pj.getChemin(), "nom", pj.getChemin()))
+            .collect(java.util.stream.Collectors.toList());
+        if (!pjs.isEmpty()) {
+            m.put("attachments", pjs);
+            m.put("attachmentUrl", pjs.get(0).get("url"));
+        }
         return m;
     }
 

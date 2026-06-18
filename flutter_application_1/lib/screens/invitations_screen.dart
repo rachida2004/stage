@@ -119,7 +119,7 @@ FloatingActionButton.extended(
       ),
     );
   },
-  backgroundColor: const Color.fromARGB(255, 2, 46, 18),
+  backgroundColor: const Color.fromARGB(255, 2, 50, 20),
   foregroundColor: Colors.white,
   icon: const Icon(Icons.edit),
   label: const Text("Creer"),
@@ -136,6 +136,47 @@ FloatingActionButton.extended(
                       hint: 'Rechercher par objet, structure...',
                       onChanged: (v) => setState(() => _search = v),
                     ),
+                    
+                    const SizedBox(height: 10),
+                    Row(
+  children: [
+    // ── BOUTON 1 : ENVOYER ──────────────────────────────────────────
+    Expanded(
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color.fromARGB(255, 10, 78, 25),       // Couleur principale (ex: Bleu)
+          foregroundColor: Colors.white,            // Texte et icône en blanc
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        onPressed: () {
+          // 🎯 Sera implémenté après pour envoyer les données à Spring Boot (ex: POST /api/...)
+        },
+        icon: const Icon(Icons.send_rounded, size: 18),
+        label: const Text('Envoyer', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+      ),
+    ),
+    
+    const SizedBox(width: 12), // Espace d'écartement entre les deux boutons
+    
+    // ── BOUTON 2 : RECEVOIR ─────────────────────────────────────────
+    Expanded(
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color.fromARGB(255, 10, 78, 25),        // Couleur de succès (ex: Vert)
+          foregroundColor: Colors.white,            // Texte et icône en blanc
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        onPressed: () {
+          // 🎯 Sera implémenté après pour récupérer les données depuis Spring Boot (ex: GET /api/...)
+        },
+        icon: const Icon(Icons.download_rounded, size: 18),
+        label: const Text('Reçu', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+      ),
+    ),
+  ],
+),
                     const SizedBox(height: 10),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,

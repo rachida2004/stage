@@ -1,10 +1,12 @@
 import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 
 import 'package:flutter_application_1/models/models.dart';
 import 'package:flutter_application_1/services/services.dart';
-
+import 'dart:io' show File;
+import 'dart:io';
 // ════════════════════════════════════════════════════════════════════
 // AUTH BLOC
 // ════════════════════════════════════════════════════════════════════
@@ -128,6 +130,10 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
 abstract class InvitationEvent extends Equatable { @override List<Object?> get props => []; }
 class LoadInvitations extends InvitationEvent { final int page; final String? search; final InvitationStatus? status; LoadInvitations({this.page=0, this.search, this.status}); @override List<Object?> get props => [page, search, status]; }
 class LoadInvDetail extends InvitationEvent { final String id; LoadInvDetail(this.id); @override List<Object?> get props => [id]; }
+
+// 🎯 AJOUT DE L'ÉVÉNEMENT POUR LE CLIC SUR "REÇU"
+class LoadInvitationsRecues extends InvitationEvent {}
+
 class CreateInvitation extends InvitationEvent {
   final Map<String, dynamic> data;
   final List<String> filePaths;
@@ -139,8 +145,6 @@ class UpdateInvitation extends InvitationEvent { final String id; final Map<Stri
 class DeleteInvitation extends InvitationEvent { final String id; DeleteInvitation(this.id); @override List<Object?> get props => [id]; }
 class AffecterAgentInv extends InvitationEvent { final String invId, agentId; final bool responsable; AffecterAgentInv(this.invId, this.agentId, {this.responsable=false}); @override List<Object?> get props => [invId, agentId, responsable]; }
 
-/// Affecte plusieurs agents à une invitation en un seul appel.
-/// Le backend gère affectations + notifications automatiquement.
 class AssignerAgentsInvitation extends InvitationEvent {
   final String invId;
   final List<String> agentIds;
@@ -162,29 +166,29 @@ class InvitationSuccess extends InvitationState { final String msg; InvitationSu
 class InvitationError extends InvitationState { final String msg; InvitationError(this.msg); @override List<Object?> get props => [msg]; }
 
 class InvitationBloc extends Bloc<InvitationEvent, InvitationState> {
-  final InvitationService _s;
+  final InvitationService _s; // Ton service s'appelle _s ici
+  
   InvitationBloc(this._s) : super(InvitationInitial()) {
     on<LoadInvitations>((e, emit) async { emit(InvitationLoading()); try { emit(InvitationsLoaded(await _s.getAll(page: e.page, search: e.search, status: e.status))); } catch (err) { emit(InvitationError(err.toString())); } });
     on<LoadInvDetail>((e, emit) async { emit(InvitationLoading()); try { emit(InvDetailLoaded(await _s.getById(e.id))); } catch (err) { emit(InvitationError(err.toString())); } });
+    
     on<CreateInvitation>((e, emit) async {
       emit(InvitationLoading());
       try {
         await _s.create(e.data, fileBytes: e.fileBytes);
-        
         emit(InvitationSuccess('Invitation créée'));
         final nouvellePage = await _s.getAll(page: 0);
         emit(InvitationsLoaded(nouvellePage));
       } catch (err) { emit(InvitationError(err.toString())); }
     });
+    
     on<UpdateInvitation>((e, emit) async { emit(InvitationLoading()); try { await _s.update(e.id, e.data); emit(InvitationSuccess('Invitation mise à jour')); } catch (err) { emit(InvitationError(err.toString())); } });
     on<DeleteInvitation>((e, emit) async { emit(InvitationLoading()); try { await _s.delete(e.id); emit(InvitationSuccess('Invitation supprimée')); } catch (err) { emit(InvitationError(err.toString())); } });
-    // Conservé pour compatibilité ascendante (affectation ticket)
     on<AffecterAgentInv>((e, emit) async { emit(InvitationLoading()); try { emit(InvDetailLoaded(await _s.getById(e.invId))); } catch (err) { emit(InvitationError(err.toString())); } });
 
     on<AssignerAgentsInvitation>((e, emit) async {
       emit(InvitationLoading());
       try {
-        // Un seul appel POST — le backend affecte ET notifie
         final inv = await _s.affecterAgents(
           e.invId,
           e.agentIds,
@@ -193,21 +197,35 @@ class InvitationBloc extends Bloc<InvitationEvent, InvitationState> {
         emit(InvDetailLoaded(inv));
       } catch (err) { emit(InvitationError(err.toString())); }
     });
-  }
+
+    // 🎯 REPLACÉ À L'INTÉRIEUR DU CONSTRUCTEUR ET CORRIGÉ AVEC "_s"
+    on<LoadInvitationsRecues>((event, emit) async {
+      emit(InvitationLoading());
+      try {
+        // Utilisation correcte du service _s
+        final invitations = await _s.getInvitationsRecues(); 
+        emit(InvitationsLoaded(invitations)); 
+      } catch (e) {
+        emit(InvitationError(e.toString()));
+      }
+    });
+  } // Fin du constructeur
 }
 
 // ════════════════════════════════════════════════════════════════════
 // TICKET BLOC
 // ════════════════════════════════════════════════════════════════════
 
-abstract class TicketEvent extends Equatable { @override List<Object?> get props => []; }
+abstract class TicketEvent extends Equatable { 
+  @override List<Object?> get props => []; 
+}
 
 class LoadTickets extends TicketEvent { 
   final int page; 
   final String? search; 
   final TicketStatus? status; 
   final TicketPriority? priority; 
-  LoadTickets({this.page=0, this.search, this.status, this.priority}); 
+  LoadTickets({this.page = 0, this.search, this.status, this.priority}); 
   @override List<Object?> get props => [page, search, status, priority]; 
 }
 
@@ -221,11 +239,18 @@ class CreateTicket extends TicketEvent {
   final String description;
   final String structure;
   final TicketPriority priority;
-  final Uint8List? attachmentBytes;
-  final String? attachmentName;
- 
-  CreateTicket({required this.description, required this.structure, required this.priority, this.attachmentBytes, this.attachmentName});
-  @override List<Object?> get props => [description, structure, priority, attachmentBytes, attachmentName];
+  final List<PlatformFile> attachments; // Multi-fichiers pris en charge
+  final String? whatsapp; // Contact WhatsApp
+
+  CreateTicket({
+    required this.description, 
+    required this.structure, 
+    required this.priority, 
+    this.attachments = const [], 
+    this.whatsapp
+  });
+  
+  @override List<Object?> get props => [description, structure, priority, attachments, whatsapp];
 }
 
 class UpdateStatut extends TicketEvent { 
@@ -248,20 +273,54 @@ class EnvoyerMessage extends TicketEvent {
   @override List<Object?> get props => [ticketId, message]; 
 }
 
+class DeleteTicket extends TicketEvent {
+  final String ticketId;
+  DeleteTicket(this.ticketId);
+  @override List<Object?> get props => [ticketId];
+}
+
+class LoadStructures extends TicketEvent {
+  @override List<Object?> get props => [];
+}
+
+class LoadServices extends TicketEvent {
+  final int structureId;
+  LoadServices(this.structureId);
+  @override List<Object?> get props => [structureId];
+}
+
 // ════════════════════════════════════════════════════════════════════
 // TICKET STATES
 // ════════════════════════════════════════════════════════════════════
-abstract class TicketState extends Equatable { @override List<Object?> get props => []; }
+
+abstract class TicketState extends Equatable { 
+  @override List<Object?> get props => []; 
+}
+
 class TicketInitial extends TicketState {}
 class TicketLoading extends TicketState {}
 class TicketsLoaded extends TicketState { final TicketPage page; TicketsLoaded(this.page); @override List<Object?> get props => [page]; }
 class TicketDetailL extends TicketState { final Ticket ticket; TicketDetailL(this.ticket); @override List<Object?> get props => [ticket]; }
 class TicketSuccess extends TicketState { final String msg; TicketSuccess(this.msg); @override List<Object?> get props => [msg]; }
 class TicketError extends TicketState { final String msg; TicketError(this.msg); @override List<Object?> get props => [msg]; }
+class TicketDeletedSuccess extends TicketState { @override List<Object?> get props => []; }
+
+class StructuresLoaded extends TicketState {
+  final List<Structure> structures;
+  StructuresLoaded(this.structures);
+  @override List<Object?> get props => [structures];
+}
+
+class ServicesLoaded extends TicketState {
+  final List<Service> services;
+  ServicesLoaded(this.services);
+  @override List<Object?> get props => [services];
+}
 
 // ════════════════════════════════════════════════════════════════════
-// TICKET BLOC MODIFIÉ
+// TICKET BLOC
 // ════════════════════════════════════════════════════════════════════
+
 class TicketBloc extends Bloc<TicketEvent, TicketState> {
   final TicketService _s;
   String? _uid; // mutable — mis à jour après login
@@ -286,17 +345,33 @@ class TicketBloc extends Bloc<TicketEvent, TicketState> {
       } catch (err) { emit(TicketError(err.toString())); }
     });
 
-    on<CreateTicket>((e, emit) async {
+   on<CreateTicket>((e, emit) async {
       emit(TicketLoading());
       try {
         final Map<String, dynamic> ticketData = {
           'description': e.description,
           'structure': e.structure,
           'priority': e.priority.apiValue,
-          'attachmentName': e.attachmentName,
+          if (e.whatsapp != null && e.whatsapp!.isNotEmpty) 'whatsapp': e.whatsapp,
           if (_uid != null) 'createurId': int.tryParse(_uid!),
         };
-        await _s.create(ticketData, fileBytes: e.attachmentBytes);
+
+        // 🎯 FIX STRICT : On type explicitement en Uint8List pour correspondre au TicketService
+        final List<MapEntry<String, Uint8List>> files = [];
+        
+        for (var f in e.attachments) {
+          if (f.bytes != null) {
+            // Environnement Web ou stockage direct en RAM
+            files.add(MapEntry(f.name, Uint8List.fromList(f.bytes!)));
+          } else if (f.path != null) {
+            // Environnement natif Mobile : lecture asynchrone du fichier local
+            final localFileBytes = await File(f.path!).readAsBytes();
+            files.add(MapEntry(f.name, Uint8List.fromList(localFileBytes)));
+          }
+        }
+
+        // L'appel passe maintenant parfaitement sans aucune erreur de type !
+        await _s.create(ticketData, multiFiles: files);
         emit(TicketSuccess('Ticket créé'));
       } catch (err) { emit(TicketError(err.toString())); }
     });
@@ -317,13 +392,33 @@ class TicketBloc extends Bloc<TicketEvent, TicketState> {
       } catch (err) { emit(TicketError(err.toString())); }
     });
 
-    // Pas de emit(TicketLoading()) ici pour ne pas faire disparaître la liste
-    // de messages pendant l'envoi
     on<EnvoyerMessage>((e, emit) async {
       try {
         final updatedTicket = await _s.envoyerMessage(e.ticketId, e.message,
             currentUserId: _uid);
         emit(TicketDetailL(updatedTicket));
+      } catch (err) { emit(TicketError(err.toString())); }
+    });
+
+    on<DeleteTicket>((e, emit) async {
+      emit(TicketLoading());
+      try {
+        await _s.delete(e.ticketId);
+        emit(TicketDeletedSuccess());
+      } catch (err) { emit(TicketError(err.toString())); }
+    });
+
+    on<LoadStructures>((e, emit) async {
+      try {
+        final structures = await _s.getStructures();
+        emit(StructuresLoaded(structures));
+      } catch (err) { emit(TicketError(err.toString())); }
+    });
+
+    on<LoadServices>((e, emit) async {
+      try {
+        final services = await _s.getServices(structureId: e.structureId);
+        emit(ServicesLoaded(services));
       } catch (err) { emit(TicketError(err.toString())); }
     });
   }
@@ -334,16 +429,23 @@ class TicketBloc extends Bloc<TicketEvent, TicketState> {
     _uid = userId;
   }
 }
+
 // ════════════════════════════════════════════════════════════════════
 // NOTIFICATION BLOC
 // ════════════════════════════════════════════════════════════════════
 
-abstract class NotifEvent extends Equatable { @override List<Object?> get props => []; }
+abstract class NotifEvent extends Equatable { 
+  @override List<Object?> get props => []; 
+}
+
 class LoadNotifs extends NotifEvent {}
 class MarkRead extends NotifEvent { final String id; MarkRead(this.id); @override List<Object?> get props => [id]; }
 class MarkAllRead extends NotifEvent {}
 
-abstract class NotifState extends Equatable { @override List<Object?> get props => []; }
+abstract class NotifState extends Equatable { 
+  @override List<Object?> get props => []; 
+}
+
 class NotifInitial extends NotifState {}
 class NotifLoading extends NotifState {}
 class NotifsLoaded extends NotifState {
@@ -355,13 +457,22 @@ class NotifError extends NotifState { final String msg; NotifError(this.msg); @o
 
 class NotifBloc extends Bloc<NotifEvent, NotifState> {
   final NotificationService _s;
+  
   NotifBloc(this._s) : super(NotifInitial()) {
-    on<LoadNotifs>((_, emit) async { emit(NotifLoading()); try { emit(NotifsLoaded(await _s.getAll())); } catch (err) { emit(NotifError(err.toString())); } });
-    on<MarkRead>((e, emit) async { try { await _s.markAsRead(e.id); add(LoadNotifs()); } catch (_) {} });
-    on<MarkAllRead>((_, emit) async { try { await _s.markAllAsRead(); add(LoadNotifs()); } catch (_) {} });
+    on<LoadNotifs>((_, emit) async { 
+      emit(NotifLoading()); 
+      try { emit(NotifsLoaded(await _s.getAll())); } catch (err) { emit(NotifError(err.toString())); } 
+    });
+    
+    on<MarkRead>((e, emit) async { 
+      try { await _s.markAsRead(e.id); add(LoadNotifs()); } catch (_) {} 
+    });
+    
+    on<MarkAllRead>((_, emit) async { 
+      try { await _s.markAllAsRead(); add(LoadNotifs()); } catch (_) {} 
+    });
   }
 }
-
 // ════════════════════════════════════════════════════════════════════
 // ADMIN EVENTS
 // ════════════════════════════════════════════════════════════════════

@@ -112,38 +112,35 @@ class ApiClient {
   Future<Response> creerTicketMultipart({
     required String description,
     String? structure,
-    required String priority, // ex: "FAIBLE", "MOYENNE", "ELEVEE"
-    List<int>? fileBytes,
+    required String priority,
+    List<int>? fileBytes,       // conservé pour compatibilité
     String? fileName,
+    List<MapEntry<String, List<int>>> multiFiles = const [], // multi-fichiers
     int? createurId,
+    String? whatsapp,
   }) async {
     try {
       final Map<String, dynamic> formDataMap = {
         'description': description,
         'priority': priority,
       };
+      if (structure != null && structure.isNotEmpty) formDataMap['structure'] = structure;
+      if (createurId != null) formDataMap['createurId'] = createurId;
+      if (whatsapp != null && whatsapp.isNotEmpty) formDataMap['whatsapp'] = whatsapp;
 
-      if (structure != null && structure.isNotEmpty) {
-        formDataMap['structure'] = structure;
-      }
-      if (createurId != null) {
-        formDataMap['createurId'] = createurId;
-      }
-
-      // Si un fichier est joint (sélectionné depuis FilePicker)
+      // Fichier unique (rétrocompat)
       if (fileBytes != null && fileName != null) {
-        formDataMap['file'] = MultipartFile.fromBytes(
-          fileBytes,
-          filename: fileName,
-        );
+        formDataMap['file'] = MultipartFile.fromBytes(fileBytes, filename: fileName);
+      }
+      // Multi-fichiers
+      if (multiFiles.isNotEmpty) {
+        formDataMap['file'] = multiFiles
+            .map((e) => MultipartFile.fromBytes(e.value, filename: e.key))
+            .toList();
       }
 
       final formData = FormData.fromMap(formDataMap);
-
-      return await dio.post(
-        '/api/tickets',
-        data: formData, // Dio configure automatiquement le Content-Type en multipart/form-data
-      );
+      return await dio.post('/api/tickets', data: formData);
     } catch (e) {
       rethrow;
     }

@@ -52,7 +52,6 @@ class SL {
 }
 
 SL get sl => SL.instance;
-
 // ════════════════════════════════════════════════════════════════════
 // INVITATION SERVICE
 // ════════════════════════════════════════════════════════════════════
@@ -69,6 +68,17 @@ class InvitationService {
       final res = await _api.dio.get(ApiConstants.invitations, queryParameters: query);
       return InvitationPage.fromJson(res.data);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  // 🎯 AJOUT : Récupération des invitations reçues depuis Spring Boot
+  Future<InvitationPage> getInvitationsRecues() async {
+    try {
+      // Modifie '${ApiConstants.invitations}/recues' si ta route Spring Boot est différente
+      final res = await _api.dio.get('${ApiConstants.invitations}/recues');
+      return InvitationPage.fromJson(res.data);
+    } on DioException catch (e) { 
+      throw ApiException.fromDio(e); 
+    }
   }
 
   Future<Invitation> getById(String id) async {
@@ -100,20 +110,20 @@ class InvitationService {
   }
 
   Future<Invitation> update(String id, Map<String, dynamic> data) async {
-  print("--- DÉBUT DE LA REQUÊTE ---");
-  print("URL: ${ApiConstants.invitations}/$id");
-  print("DATA: $data");
-  try { 
-    final res = await _api.dio.put('${ApiConstants.invitations}/$id', data: data);
-    print("--- SUCCÈS: ${res.statusCode} ---");
-    return Invitation.fromJson(res.data);
-  } on DioException catch (e) {
-    print("--- ERREUR DIO ---");
-    print("Message: ${e.message}");
-    print("Response: ${e.response?.data}"); // C'est ici que tu verras pourquoi ça échoue (400, 403, 404)
-    throw ApiException.fromDio(e); 
+    print("--- DÉBUT DE LA REQUÊTE ---");
+    print("URL: ${ApiConstants.invitations}/$id");
+    print("DATA: $data");
+    try { 
+      final res = await _api.dio.put('${ApiConstants.invitations}/$id', data: data);
+      print("--- SUCCÈS: ${res.statusCode} ---");
+      return Invitation.fromJson(res.data);
+    } on DioException catch (e) {
+      print("--- ERREUR DIO ---");
+      print("Message: ${e.message}");
+      print("Response: ${e.response?.data}"); 
+      throw ApiException.fromDio(e); 
+    }
   }
-}
 
   Future<void> delete(String id) async {
     try { await _api.dio.delete('${ApiConstants.invitations}/$id'); }
@@ -142,19 +152,25 @@ class InvitationService {
   }
 }
 
-// ════════════════════════════════════════════════════════════════════
-// TICKET SERVICE
+/// ════════════════════════════════════════════════════════════════════
+// TICKET SERVICE COMPLET
 // ════════════════════════════════════════════════════════════════════
 
 class TicketService {
   final ApiClient _api;
   TicketService(this._api);
 
-  Future<TicketPage> getAll({int page = 0, String? search,
-      TicketStatus? status, TicketPriority? priority, String? currentUserId}) async {
+  Future<TicketPage> getAll({
+    int page = 0, 
+    String? search,
+    TicketStatus? status, 
+    TicketPriority? priority, 
+    String? currentUserId
+  }) async {
     try {
       final res = await _api.getTickets(
-        page: page, size: 10,
+        page: page, 
+        size: 10,
         search: search,
         statut: status?.apiValue,
         priorite: priority?.apiValue,
@@ -170,7 +186,12 @@ class TicketService {
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  Future<Ticket> create(Map<String, dynamic> data, {Uint8List? fileBytes}) async {
+  // 🎯 Reçoit proprement la liste multiFiles préparée par le Bloc
+  Future<Ticket> create(
+    Map<String, dynamic> data, {
+    Uint8List? fileBytes, 
+    List<MapEntry<String, Uint8List>> multiFiles = const []
+  }) async {
     try {
       final res = await _api.creerTicketMultipart(
         description: data['description'] ?? '',
@@ -178,14 +199,41 @@ class TicketService {
         priority: data['priority'] ?? 'MOYENNE',
         fileBytes: fileBytes,
         fileName: data['attachmentName'],
+        // On repasse la liste nettoyée et typée à ton ApiClient (Dio)
+        multiFiles: multiFiles.map((e) => MapEntry(e.key, e.value.toList())).toList(),
         createurId: data['createurId'] != null ? int.tryParse(data['createurId'].toString()) : null,
+        whatsapp: data['whatsapp'],
       );
       return Ticket.fromJson(res.data);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  Future<Ticket> updateStatut(String id, TicketStatus statut,
-      {String? solution, String? currentUserId}) async {
+  Future<void> delete(String id) async {
+    try { await _api.dio.delete('/api/tickets/$id'); }
+    on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<List<Structure>> getStructures() async {
+    try {
+      final res = await _api.dio.get('/api/structures');
+      return (res.data as List).map((s) => Structure.fromJson(s)).toList();
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<List<Service>> getServices({int? structureId}) async {
+    try {
+      final params = structureId != null ? {'structureId': structureId} : null;
+      final res = await _api.dio.get('/api/services', queryParameters: params);
+      return (res.data as List).map((s) => Service.fromJson(s)).toList();
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<Ticket> updateStatut(
+    String id, 
+    TicketStatus statut, {
+    String? solution, 
+    String? currentUserId
+  }) async {
     try {
       final res = await _api.changerStatut(
         ticketId: int.parse(id),
@@ -205,8 +253,9 @@ class TicketService {
 
   Future<Ticket> envoyerMessage(String ticketId, String message, {String? currentUserId}) async {
     try {
-      if (currentUserId == null || currentUserId.isEmpty)
+      if (currentUserId == null || currentUserId.isEmpty) {
         throw Exception("ID utilisateur manquant pour l'envoi du message.");
+      }
       final res = await _api.envoyerMessage(
         ticketId: int.parse(ticketId),
         message: message,
@@ -215,16 +264,7 @@ class TicketService {
       return Ticket.fromJson(res.data, currentUserId: currentUserId);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
- Future<void> delete(String id, {String? currentUserId}) async {
-    try {
-      // Remplacer .deleteTicket par .supprimerTicket qui est le vrai nom dans ton ApiClient
-      await _api.supprimerTicket(int.parse(id));
-    } on DioException catch (e) {
-      throw ApiException.fromDio(e);
-    }
-  }
 }
-
 
 // ════════════════════════════════════════════════════════════════════
 // AUTH SERVICE

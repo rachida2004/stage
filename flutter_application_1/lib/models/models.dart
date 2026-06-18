@@ -282,7 +282,9 @@ class Ticket {
   final DateTime createdAt;
   final AppUser? agentAssigne;
   final AppUser? createur;
-  final String? attachmentUrl; 
+  final String? attachmentUrl;       // compat — 1ère PJ
+  final List<String> attachments;   // toutes les PJ (URLs absolues)
+  final String? whatsapp;
   final List<TicketMessage> messages;
 
   Ticket({
@@ -294,7 +296,9 @@ class Ticket {
     required this.createdAt,
     this.agentAssigne,
     this.createur,
-    this.attachmentUrl, 
+    this.attachmentUrl,
+    this.attachments = const [],
+    this.whatsapp,
     this.messages = const [],
   });
 
@@ -315,7 +319,11 @@ class Ticket {
     createdAt: j['createdAt'] != null ? DateTime.parse(j['createdAt']) : DateTime.now(),
     agentAssigne: j['agentAssigne'] != null ? AppUser.fromJson(j['agentAssigne']) : null,
     createur:     j['createur'] != null ? AppUser.fromJson(j['createur']) : null,
-    attachmentUrl: j['attachmentUrl'] ?? j['pieceJointeUrl'], 
+    attachmentUrl: j['attachmentUrl'] ?? j['pieceJointeUrl'],
+    attachments: (j['attachments'] as List<dynamic>? ?? [])
+        .map((e) => (e is Map ? e['url']?.toString() : e?.toString()) ?? '')
+        .where((u) => u.isNotEmpty).toList(),
+    whatsapp: j['whatsapp'],
     messages: (j['messages'] as List<dynamic>? ?? j['communications'] as List<dynamic>? ?? [])
         .map((m) => TicketMessage.fromJson(m, currentUserId: currentUserId)).toList(),
   );
