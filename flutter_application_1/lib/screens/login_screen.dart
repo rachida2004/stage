@@ -87,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 hintText: '••••••••',
                                 prefixIcon: const Icon(Icons.lock_outline, size: 18),
                                 suffixIcon: IconButton(
-                                  icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
+                                  icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
                                   onPressed: () => setState(() => _obscure = !_obscure),
                                 ),
                               ),

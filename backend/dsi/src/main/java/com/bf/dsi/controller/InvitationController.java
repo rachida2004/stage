@@ -8,9 +8,12 @@ import com.bf.dsi.services.FileStorageService;
 import com.bf.dsi.services.InvitationService;
 import com.bf.dsi.services.PdfService;
 import com.bf.dsi.services.WordService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.http.*;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -20,11 +23,13 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/invitations")
 @RequiredArgsConstructor
-@Transactional 
+@Transactional
+@Tag(name = "Invitations", description = "Gestion des invitations (création, lettre officielle, reçues / envoyées)")
 public class InvitationController {
 
     private final InvitationRepository invitationRepo;
     private final StructureRepository structureRepo;
+    private final StructureInviteeRepository structureInviteeRepo;
     private final FileStorageService fileStorage;
     private final PdfService pdfService;
     private final WordService wordService;
@@ -37,6 +42,11 @@ public class InvitationController {
         private Long responsableId;
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // LISTES
+    // ════════════════════════════════════════════════════════════════
+
+    @Operation(summary = "Liste paginée de toutes les invitations (avec recherche/filtre statut)")
     @GetMapping
     public ResponseEntity<?> getAll(
             @RequestParam(defaultValue = "0") int page,
@@ -47,6 +57,28 @@ public class InvitationController {
         return ResponseEntity.ok(toPageResponse(result));
     }
 
+    @Operation(summary = "Invitations affichées sur la page REÇU",
+        description = "Retourne les invitations créées via le formulaire 'Créer' (lettre officielle, modeCreation = CREER).")
+    @GetMapping("/recues")
+    public ResponseEntity<?> getInvitationsRecues(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        Page<Invitation> result = invitationRepo.findByModeCreationOrderByIdDesc("CREER", PageRequest.of(page, size));
+        return ResponseEntity.ok(toPageResponse(result));
+    }
+
+    @Operation(summary = "Invitations affichées sur la page ENVOYER",
+        description = "Retourne les invitations créées via le formulaire rapide 'Enregistrer' (modeCreation = ENREGISTRER).")
+    @GetMapping("/envoyees")
+    public ResponseEntity<?> getInvitationsEnvoyees(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String statut) {
+        Page<Invitation> result = invitationRepo.findByModeCreationOrderByIdDesc("ENREGISTRER", PageRequest.of(page, size));
+        return ResponseEntity.ok(toPageResponse(result));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<?> getById(@PathVariable Long id) {
         return invitationRepo.findById(id)
@@ -54,6 +86,11 @@ public class InvitationController {
             .orElse(ResponseEntity.notFound().build());
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // CRÉATION
+    // ════════════════════════════════════════════════════════════════
+
+    @Operation(summary = "Créer une invitation (JSON) — incluant la lettre officielle et les structures destinataires")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> createJson(@RequestBody InvitationRequest req) {
         Invitation inv = Invitation.builder()
@@ -62,18 +99,27 @@ public class InvitationController {
             .dateFin(req.getDateFin())
             .nombreParticipant(req.getNombreParticipants() != null ? req.getNombreParticipants() : 0)
             .visibilite(req.getVisibilite() != null ? req.getVisibilite() : "PUBLIC")
-            .lieu(req.getLieu()) // Ajout du lieu si présent dans le JSON
+            .lieu(req.getLieu())
             .statut(StatutInvitation.EN_ATTENTE)
+            .numeroReference(req.getNumeroReference())
+            .ville(req.getVille() != null ? req.getVille() : "Ouagadougou")
+            .contenu(req.getContenu())
+            .ampliation(req.getAmpliation())
+            .signataireNom(req.getSignataireNom())
+            .signataireQualite(req.getSignataireQualite())
+            .modeCreation(req.getModeCreation() != null && !req.getModeCreation().isBlank()
+                ? req.getModeCreation() : "ENREGISTRER")
             .build();
-            
-        // Alignement avec le champ String du DTO
-        if (req.getStructureEmettrice() != null && !req.getStructureEmettrice().trim().isEmpty()) {
-            structureRepo.findByNom(req.getStructureEmettrice()).ifPresent(inv::setStructureEmettrice);
-        }
-            
-        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(invitationRepo.save(inv)));
+
+        appliquerStructureEmettrice(inv, req.getStructureEmettriceId(), req.getStructureEmettrice());
+
+        Invitation saved = invitationRepo.save(inv);
+        appliquerStructuresInvitees(saved, req.getStructureIds());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
+    @Operation(summary = "Créer une invitation (multipart) — avec pièces jointes et structures destinataires")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createMultipart(
             @RequestParam String objet,
@@ -84,6 +130,14 @@ public class InvitationController {
             @RequestParam(required = false) Long structureEmettriceId,
             @RequestParam(required = false) String nomStructure,
             @RequestParam(required = false) String lieu,
+            @RequestParam(required = false) String numeroReference,
+            @RequestParam(required = false) String ville,
+            @RequestParam(required = false) String contenu,
+            @RequestParam(required = false) String ampliation,
+            @RequestParam(required = false) String signataireNom,
+            @RequestParam(required = false) String signataireQualite,
+            @RequestParam(required = false, defaultValue = "ENREGISTRER") String modeCreation,
+            @RequestParam(required = false) List<Long> structureIds,
             @RequestParam(required = false) List<MultipartFile> files) {
 
         LocalDate parsedDateDebut = null;
@@ -104,6 +158,13 @@ public class InvitationController {
             .visibilite(visibilite != null ? visibilite : "PUBLIC")
             .lieu(lieu)
             .statut(StatutInvitation.EN_ATTENTE)
+            .numeroReference(numeroReference)
+            .ville(ville != null && !ville.trim().isEmpty() ? ville : "Ouagadougou")
+            .contenu(contenu)
+            .ampliation(ampliation)
+            .signataireNom(signataireNom)
+            .signataireQualite(signataireQualite)
+            .modeCreation(modeCreation != null && !modeCreation.isBlank() ? modeCreation : "ENREGISTRER")
             .build();
 
         if (structureEmettriceId != null) {
@@ -119,6 +180,8 @@ public class InvitationController {
         }
 
         Invitation saved = invitationRepo.save(inv);
+
+        appliquerStructuresInvitees(saved, structureIds);
 
         if (files != null) {
             for (MultipartFile file : files) {
@@ -138,9 +201,10 @@ public class InvitationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // MÉTHODE DE MODIFICATION REVOUE ET ALIGNÉE
-    // ════════════════════════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════════════════
+    // MODIFICATION
+    // ════════════════════════════════════════════════════════════════
+
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody InvitationRequest req) {
         return invitationRepo.findById(id).map(inv -> {
@@ -150,17 +214,28 @@ public class InvitationController {
             if (req.getNombreParticipants() != null) inv.setNombreParticipant(req.getNombreParticipants());
             if (req.getVisibilite() != null) inv.setVisibilite(req.getVisibilite());
             if (req.getLieu() != null) inv.setLieu(req.getLieu());
-            
+            if (req.getNumeroReference() != null) inv.setNumeroReference(req.getNumeroReference());
+            if (req.getVille() != null) inv.setVille(req.getVille());
+            if (req.getContenu() != null) inv.setContenu(req.getContenu());
+            if (req.getAmpliation() != null) inv.setAmpliation(req.getAmpliation());
+            if (req.getSignataireNom() != null) inv.setSignataireNom(req.getSignataireNom());
+            if (req.getSignataireQualite() != null) inv.setSignataireQualite(req.getSignataireQualite());
+
             if (req.getStatut() != null) {
                 try { inv.setStatut(StatutInvitation.valueOf(req.getStatut())); } catch (Exception ignored) {}
             }
-            
-            // Récupère et associe l'entité Structure sur la base du nom textuel reçu du DTO
-            if (req.getStructureEmettrice() != null && !req.getStructureEmettrice().trim().isEmpty()) {
-                structureRepo.findByNom(req.getStructureEmettrice()).ifPresent(inv::setStructureEmettrice);
+
+            if (req.getStructureEmettriceId() != null || (req.getStructureEmettrice() != null && !req.getStructureEmettrice().trim().isEmpty())) {
+                appliquerStructureEmettrice(inv, req.getStructureEmettriceId(), req.getStructureEmettrice());
             }
-            
-            return ResponseEntity.ok(toDto(invitationRepo.save(inv)));
+
+            Invitation saved = invitationRepo.save(inv);
+
+            if (req.getStructureIds() != null) {
+                appliquerStructuresInvitees(saved, req.getStructureIds());
+            }
+
+            return ResponseEntity.ok(toDto(saved));
         }).orElse(ResponseEntity.notFound().build());
     }
 
@@ -178,6 +253,7 @@ public class InvitationController {
         return ResponseEntity.ok(toDto(invMiseAJour));
     }
 
+    @Operation(summary = "Générer/télécharger la lettre d'invitation au format PDF")
     @GetMapping("/{id}/export/pdf")
     public ResponseEntity<byte[]> exportPdf(@PathVariable Long id) {
         Invitation inv = invitationRepo.findById(id).orElseThrow();
@@ -185,10 +261,11 @@ public class InvitationController {
         return ResponseEntity.ok().header("Content-Disposition", "attachment; filename=\"invitation_" + id + ".pdf\"").contentType(MediaType.APPLICATION_PDF).body(pdf);
     }
 
+    @Operation(summary = "Générer/télécharger la lettre d'invitation au format Word")
     @GetMapping("/{id}/export/word")
     public ResponseEntity<byte[]> exportWord(@PathVariable Long id) {
         Invitation inv = invitationRepo.findById(id).orElseThrow();
-        byte[] wordDocument = wordService.generateInvitationWord(inv); 
+        byte[] wordDocument = wordService.generateInvitationWord(inv);
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invitation_" + id + ".docx\"").contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document")).body(wordDocument);
     }
 
@@ -209,6 +286,89 @@ public class InvitationController {
         )).toList());
     }
 
+    @Operation(summary = "Ajouter une structure destinataire à une invitation (CRUD structure_invitee)")
+    @PostMapping("/{id}/structures-invitees")
+    public ResponseEntity<?> ajouterStructureInvitee(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Invitation inv = invitationRepo.findById(id).orElseThrow();
+        Long structureId = body.get("structureId") != null ? Long.valueOf(body.get("structureId").toString()) : null;
+        if (structureId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "structureId requis"));
+        }
+        boolean dejaLiee = structureInviteeRepo.findByInvitationId(id).stream()
+            .anyMatch(si -> si.getStructure() != null && structureId.equals(si.getStructure().getId()));
+        if (dejaLiee) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Cette structure est déjà destinataire de cette invitation"));
+        }
+        Structure structure = structureRepo.findById(structureId).orElseThrow();
+        StructureInvitee si = StructureInvitee.builder()
+            .invitation(inv)
+            .structure(structure)
+            .statutReponse(StatutReponse.EN_ATTENTE)
+            .build();
+        structureInviteeRepo.save(si);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(invitationRepo.findById(id).orElseThrow()));
+    }
+
+    @Operation(summary = "Modifier le statut de réponse d'une structure destinataire (CRUD structure_invitee)")
+    @PutMapping("/structures-invitees/{structureInviteeId}")
+    public ResponseEntity<?> modifierStructureInvitee(@PathVariable Long structureInviteeId, @RequestBody Map<String, String> body) {
+        StructureInvitee si = structureInviteeRepo.findById(structureInviteeId).orElseThrow();
+        if (body.get("statutReponse") != null) {
+            try { si.setStatutReponse(StatutReponse.valueOf(body.get("statutReponse"))); } catch (Exception ignored) {}
+        }
+        structureInviteeRepo.save(si);
+        return ResponseEntity.ok(toDto(invitationRepo.findById(si.getInvitation().getId()).orElseThrow()));
+    }
+
+    @Operation(summary = "Retirer une structure destinataire d'une invitation (CRUD structure_invitee)")
+    @DeleteMapping("/structures-invitees/{structureInviteeId}")
+    public ResponseEntity<?> supprimerStructureInvitee(@PathVariable Long structureInviteeId) {
+        StructureInvitee si = structureInviteeRepo.findById(structureInviteeId).orElseThrow();
+        Long invId = si.getInvitation().getId();
+        structureInviteeRepo.deleteById(structureInviteeId);
+        return ResponseEntity.ok(toDto(invitationRepo.findById(invId).orElseThrow()));
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // OUTILS PRIVÉS
+    // ════════════════════════════════════════════════════════════════
+
+    /** Résout l'utilisateur authentifié (par email du token JWT). */
+    private Utilisateur currentUser(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) return null;
+        return utilisateurRepo.findByEmail(authentication.getName()).orElse(null);
+    }
+
+    private void appliquerStructureEmettrice(Invitation inv, Long structureEmettriceId, String structureEmettriceNom) {
+        if (structureEmettriceId != null) {
+            structureRepo.findById(structureEmettriceId).ifPresent(inv::setStructureEmettrice);
+        } else if (structureEmettriceNom != null && !structureEmettriceNom.trim().isEmpty()) {
+            structureRepo.findByNom(structureEmettriceNom).ifPresent(inv::setStructureEmettrice);
+        }
+    }
+
+    /** Remplace la liste des structures invitées (destinataires) de l'invitation. */
+    private void appliquerStructuresInvitees(Invitation inv, List<Long> structureIds) {
+        if (structureIds == null) return;
+
+        // On supprime les anciennes associations avant de reconstruire la liste
+        List<StructureInvitee> anciennes = structureInviteeRepo.findByInvitationId(inv.getId());
+        if (!anciennes.isEmpty()) {
+            structureInviteeRepo.deleteAll(anciennes);
+        }
+
+        for (Long structureId : structureIds) {
+            structureRepo.findById(structureId).ifPresent(structure -> {
+                StructureInvitee si = StructureInvitee.builder()
+                    .invitation(inv)
+                    .structure(structure)
+                    .statutReponse(StatutReponse.EN_ATTENTE)
+                    .build();
+                structureInviteeRepo.save(si);
+            });
+        }
+    }
+
     private Map<String, Object> toDto(Invitation i) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", i.getId());
@@ -219,12 +379,28 @@ public class InvitationController {
         m.put("nombreParticipants", i.getNombreParticipant());
         m.put("status", i.calculerStatutAutomatique() != null ? i.calculerStatutAutomatique().name() : "EN_ATTENTE");
         m.put("visibilite", i.getVisibilite());
+        m.put("modeCreation", i.getModeCreation());
         m.put("dateCreation", i.getDateCreation());
-        
-        m.put("structureEmettrice", (i.getStructureEmettrice() != null && i.getStructureEmettrice().getNom() != null) 
-                                     ? i.getStructureEmettrice().getNom() 
+
+        m.put("numeroReference", i.getNumeroReference());
+        m.put("ville", i.getVille());
+        m.put("contenu", i.getContenu());
+        m.put("ampliation", i.getAmpliation());
+        m.put("signataireNom", i.getSignataireNom());
+        m.put("signataireQualite", i.getSignataireQualite());
+
+        m.put("structureEmettriceId", i.getStructureEmettrice() != null ? i.getStructureEmettrice().getId() : null);
+        m.put("structureEmettrice", (i.getStructureEmettrice() != null && i.getStructureEmettrice().getNom() != null)
+                                     ? i.getStructureEmettrice().getNom()
                                      : "Non spécifiée");
-        
+
+        m.put("structuresInvitees", i.getStructuresInvitees().stream().map(si -> Map.of(
+            "structureInviteeId", si.getId(),
+            "id", si.getStructure().getId(),
+            "nom", si.getStructure().getNom(),
+            "statutReponse", si.getStatutReponse() != null ? si.getStatutReponse().name() : "EN_ATTENTE"
+        )).toList());
+
         m.put("agentsAffectes", i.getAffectations().stream().map(a -> Map.of(
             "id", a.getAgent().getUserId(),
             "nom", a.getAgent().getNom(),
@@ -233,14 +409,14 @@ public class InvitationController {
             "initiales", a.getAgent().getInitiales(),
             "responsable", a.getResponsablePrincipal()
         )).toList());
-        
+
         m.put("piecesJointes", i.getPiecesJointes().stream().map(pj -> Map.of(
-            "id", pj.getId(), 
+            "id", pj.getId(),
             "nom", pj.getNom(),
             "type", pj.getType() != null ? pj.getType() : "",
             "url", pj.getChemin() != null && pj.getChemin().startsWith("/") ? pj.getChemin() : "/" + (pj.getChemin() != null ? pj.getChemin() : "")
         )).toList());
-        
+
         return m;
     }
 
@@ -250,6 +426,15 @@ public class InvitationController {
             "totalElements", page.getTotalElements(),
             "totalPages", page.getTotalPages(),
             "number", page.getNumber()
+        );
+    }
+
+    private Map<String, Object> toListResponse(List<Invitation> liste) {
+        return Map.of(
+            "content", liste.stream().map(this::toDto).toList(),
+            "totalElements", liste.size(),
+            "totalPages", 1,
+            "number", 0
         );
     }
 }

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict kXSlYbAZQlBUDePz18RJgWe3yxcq5nBGrbs3QVRj7PvvvaihywRO1ooSaIxVrcb
+\restrict BaYpetEh4MJBlTqmhK8F6qS0tT63NPNUsZI59F1JSd2V7rXlf30iCwTgkXI64UI
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -318,7 +318,15 @@ CREATE TABLE public.invitation (
     statut character varying(255) DEFAULT 'EN_ATTENTE'::public.statut_invitation NOT NULL,
     visibilite character varying(255) DEFAULT 'PUBLIC'::character varying,
     date_creation timestamp without time zone DEFAULT now() NOT NULL,
-    structure_emettrice bigint
+    structure_emettrice bigint,
+    lieu character varying(255),
+    ampliation character varying(255),
+    contenu text,
+    numero_reference character varying(255),
+    signataire_nom character varying(255),
+    signataire_qualite character varying(255),
+    ville character varying(255),
+    mode_creation character varying(255)
 );
 
 
@@ -616,7 +624,8 @@ CREATE TABLE public.ticket (
     solution text,
     structure_id bigint,
     createur_id bigint,
-    description text NOT NULL
+    description text NOT NULL,
+    whatsapp character varying(20)
 );
 
 
@@ -836,20 +845,14 @@ ALTER TABLE ONLY public.utilisateur_role ALTER COLUMN id SET DEFAULT nextval('pu
 --
 
 COPY public.affectation_invitation (id, invitation_id, agent_id, responsable_principal, date_affectation) FROM stdin;
-1	15	9	f	2026-06-11 00:20:55.429659
-7	14	5	f	2026-06-11 00:41:21.084003
-8	14	6	f	2026-06-11 00:41:21.089002
-9	14	9	t	2026-06-11 00:41:21.092021
-17	7	4	t	2026-06-11 18:10:03.180664
-20	9	4	t	2026-06-11 18:12:15.453061
-23	16	4	f	2026-06-11 19:33:56.919114
-24	16	6	f	2026-06-11 19:33:56.950348
-25	16	5	f	2026-06-11 19:33:56.958341
-26	12	5	t	2026-06-11 19:46:18.687952
-30	8	4	f	2026-06-11 23:19:32.590021
-31	8	7	f	2026-06-11 23:19:32.597974
-35	17	7	f	2026-06-14 05:59:50.70054
-36	17	6	f	2026-06-14 05:59:50.740717
+2	1	7	f	2026-06-15 19:18:24.912564
+3	1	6	t	2026-06-15 19:18:24.920565
+4	4	6	t	2026-06-16 01:29:28.582328
+5	7	3	f	2026-06-17 07:13:17.634259
+6	5	3	f	2026-06-18 17:36:05.608605
+7	9	3	f	2026-06-19 07:59:48.744414
+9	19	3	f	2026-06-21 20:32:59.058331
+10	19	5	f	2026-06-21 20:32:59.069333
 \.
 
 
@@ -858,21 +861,17 @@ COPY public.affectation_invitation (id, invitation_id, agent_id, responsable_pri
 --
 
 COPY public.affectation_ticket (id, ticket_id, agent_id, responsable_principal, date_affectation) FROM stdin;
-1	5	3	t	2026-06-07 03:10:21.213169
-2	5	4	t	2026-06-08 18:25:19.202032
-3	6	5	t	2026-06-08 18:28:23.76241
-4	7	1	t	2026-06-09 19:38:04.996411
-5	8	8	t	2026-06-09 20:09:38.278303
-7	9	5	t	2026-06-09 21:25:19.367504
-8	10	5	t	2026-06-09 21:33:38.978869
-9	11	8	t	2026-06-09 22:49:45.059903
-10	12	4	t	2026-06-09 23:18:20.539539
-11	13	3	t	2026-06-10 05:49:25.901474
-12	14	5	t	2026-06-10 09:47:41.618806
-13	15	7	t	2026-06-10 20:15:24.900223
-15	15	5	t	2026-06-11 19:50:44.441287
-16	15	1	t	2026-06-11 19:51:01.868894
-18	14	7	t	2026-06-11 23:18:58.410668
+1	2	8	t	2026-06-16 05:33:35.580889
+2	2	3	t	2026-06-17 01:01:11.999607
+3	3	3	t	2026-06-17 07:17:09.438908
+4	3	9	t	2026-06-17 09:32:02.508788
+5	3	5	t	2026-06-17 09:32:17.183809
+6	3	4	t	2026-06-17 09:33:04.769264
+7	5	3	t	2026-06-17 09:35:19.988088
+8	6	5	t	2026-06-17 09:42:02.64565
+9	14	3	t	2026-06-18 00:25:48.393431
+11	13	3	t	2026-06-20 07:56:57.161888
+12	17	3	t	2026-06-22 05:48:35.670751
 \.
 
 
@@ -881,10 +880,10 @@ COPY public.affectation_ticket (id, ticket_id, agent_id, responsable_principal, 
 --
 
 COPY public.app_settings (cle, valeur) FROM stdin;
-notificationsEmail	true
-notificationsInternes	true
-delaiMaxSansAffectation	48h
+notificationsEmail	false
+notificationsInternes	false
 langue	Français
+delaiMaxSansAffectation	48h
 \.
 
 
@@ -916,21 +915,25 @@ COPY public.communication (id, message, date, auteur_id, ticket_id) FROM stdin;
 -- Data for Name: invitation; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.invitation (id, objet, date_debut, date_fin, nombre_participant, statut, visibilite, date_creation, structure_emettrice) FROM stdin;
-4	d	2026-06-02	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-03 09:39:51.154846	\N
-5	g	2026-06-16	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-03 11:00:56.485296	\N
-6	qss	2026-06-12	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-04 11:02:25.242992	\N
-10	bvnvjkd	2026-06-10	2026-06-25	0	EN_ATTENTE	PUBLIC	2026-06-10 08:47:05.459443	\N
-11	wxcvbn	2026-06-10	2026-06-18	0	EN_ATTENTE	PUBLIC	2026-06-10 08:57:23.86118	\N
-15	xcgvhbn	2026-06-10	2026-06-18	0	EN_COURS	PUBLIC	2026-06-10 22:59:46.448865	\N
-14	cvbnk	2026-06-10	2026-06-26	0	EN_COURS	PUBLIC	2026-06-10 11:31:19.972371	\N
-16	dfghj	2026-06-11	2026-06-19	0	EN_COURS	PUBLIC	2026-06-11 00:44:30.300541	\N
-7	ghjk	2026-06-08	2026-06-10	0	TERMINEE	PUBLIC	2026-06-08 18:32:18.303401	\N
-8	LKJHGCFHJ	2026-06-09	2026-06-26	2	EN_COURS	PUBLIC	2026-06-09 01:27:23.776136	\N
-9	xghjklw	2026-06-09	2026-06-26	0	EN_COURS	PUBLIC	2026-06-09 22:46:40.296999	\N
-12	x,	2026-06-24	2026-06-18	0	PLANIFIEE	PUBLIC	2026-06-10 09:36:19.968002	\N
-17	g fjkl	2026-06-11	2026-06-13	0	TERMINEE	PUBLIC	2026-06-11 19:49:30.101747	\N
-18	xdfcvbn	2026-06-14	2026-06-16	0	EN_ATTENTE	PUBLIC	2026-06-14 06:01:20.359373	\N
+COPY public.invitation (id, objet, date_debut, date_fin, nombre_participant, statut, visibilite, date_creation, structure_emettrice, lieu, ampliation, contenu, numero_reference, signataire_nom, signataire_qualite, ville, mode_creation) FROM stdin;
+1	boton	2026-06-15	2026-06-18	2	EN_COURS	PUBLIC	2026-06-15 06:54:30.07283	\N	ouaga	\N	\N	\N	\N	\N	\N	\N
+4	rencontre	2026-06-16	2026-06-18	2	EN_COURS	PUBLIC	2026-06-16 01:28:28.482157	\N	ouaga	\N	\N	\N	\N	\N	\N	\N
+7	conte	2026-06-18	2026-06-20	3	PLANIFIEE	PUBLIC	2026-06-16 05:00:45.237147	\N	kaya	\N	\N	\N	\N	\N	\N	\N
+5	pancarte	2026-06-16	2026-06-19	3	EN_COURS	PUBLIC	2026-06-16 03:18:23.572308	\N	ddd	\N	\N	\N	\N	\N	\N	\N
+8	ertyuio	2026-06-19	2026-06-20	2	EN_ATTENTE	PUBLIC	2026-06-19 06:54:46.228699	20	ouaga	geljd	k,edrtiyxuonp,kednbctviydhjlkb cjkbihety fogeydhjl  e		jusdjne	Le Secrétaire général	Ouagadougou	\N
+9	kjlhgfhjk	2026-06-19	2026-06-20	0	EN_COURS	PUBLIC	2026-06-19 07:19:23.062371	\N						Le Secrétaire général	Ouagadougou	\N
+10	jhgfdcghjkl	2026-06-21	2026-06-23	0	EN_ATTENTE	PUBLIC	2026-06-21 02:57:36.58626	\N	ljkhgj					Le Secrétaire général	Ouagadougou	ENREGISTRER
+11	cgvhbsssss	2026-06-23	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 03:13:55.09272	20						Le Secrétaire général	Ouagadougou	ENREGISTRER
+12	nbvcvbn	2026-06-15	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-21 03:24:42.897752	20						Le Secrétaire général	Ouagadougou	ENREGISTRER
+13	lkjbh	2026-06-23	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 03:45:36.153365	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
+14	mlkjhgfxcghj	2026-06-15	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 03:46:06.792016	21		\N	\N	\N	\N	\N	Ouagadougou	ENREGISTRER
+15	nn,;	2026-06-20	2026-06-23	0	EN_ATTENTE	PUBLIC	2026-06-21 16:59:24.672013	\N	fcghjg					Le Secrétaire général	Ouagadougou	ENREGISTRER
+16	kjhgvcxcv	2026-06-20	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 17:09:29.578645	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
+17	kljh	2026-06-22	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-21 17:51:43.119087	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
+18	kjhgcfhjk	2026-06-23	2026-06-24	0	EN_ATTENTE	PUBLIC	2026-06-21 17:58:01.281955	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
+19	mlkjbhv	2026-06-23	2026-06-26	0	PLANIFIEE	PUBLIC	2026-06-21 17:58:50.425402	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
+20	dfkljkhj	2026-06-15	2026-06-24	0	EN_ATTENTE	PUBLIC	2026-06-21 23:30:11.609315	\N	kljhgjk					Le Secrétaire général	Ouagadougou	CREER
+21	gfdrtfyui	2026-06-22	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-22 05:03:28.502358	\N		klmj_ynèèp	hgjkjnlbvfdxcgvhjkl\nùokmijluyhtrcdsxqzer-tèy_uçàii_ouyhtghfdghjklm		ghzertyuio	Le Secrétaire général	Ouagadougou	CREER
 \.
 
 
@@ -951,10 +954,8 @@ COPY public.notification (id, message, date_envoi, canal, statut, categorie, res
 10	Vous avez été affecté au ticket #13	2026-06-10 05:49:25.986835	INTERNE	t	TICKET	13	Voir	3
 11	Vous avez été affecté au ticket #14	2026-06-10 09:47:41.627917	INTERNE	f	TICKET	14	Voir	5
 12	Vous avez été affecté au ticket #15	2026-06-10 20:15:24.907714	INTERNE	f	TICKET	15	Voir	7
-13	Vous avez été affecté à l'invitation : xcgvhbn	2026-06-11 00:20:55.45176	INTERNE	f	INVITATION	15	Voir	9
 19	Vous avez été affecté à l'invitation : cvbnk	2026-06-11 00:41:21.086004	INTERNE	f	INVITATION	14	Voir	5
 20	Vous avez été affecté à l'invitation : cvbnk	2026-06-11 00:41:21.089998	INTERNE	f	INVITATION	14	Voir	6
-21	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : cvbnk	2026-06-11 00:41:21.093018	INTERNE	f	INVITATION	14	Voir	9
 25	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : dfghj	2026-06-11 00:44:45.573227	INTERNE	f	INVITATION	16	Voir	4
 29	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : ghjk	2026-06-11 18:10:03.197979	INTERNE	f	INVITATION	7	Voir	4
 31	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : LKJHGCFHJ	2026-06-11 18:11:37.601446	INTERNE	f	INVITATION	8	Voir	4
@@ -976,8 +977,49 @@ COPY public.notification (id, message, date_envoi, canal, statut, categorie, res
 47	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	4
 48	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	6
 49	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	7
-50	Vous avez été affecté à l'invitation : g fjkl	2026-06-14 05:59:50.73535	INTERNE	f	INVITATION	17	Voir	7
 51	Vous avez été affecté à l'invitation : g fjkl	2026-06-14 05:59:50.74522	INTERNE	f	INVITATION	17	Voir	6
+52	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : xdfcvbn	2026-06-14 06:21:30.629978	INTERNE	f	INVITATION	18	Voir	5
+53	Vous avez été affecté à l'invitation : kjhgj	2026-06-14 08:21:01.115736	INTERNE	f	INVITATION	25	Voir	5
+54	Vous avez été affecté à l'invitation : aertyu	2026-06-14 08:35:25.236623	INTERNE	f	INVITATION	26	Voir	2
+55	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : aertyu	2026-06-14 08:36:41.090501	INTERNE	f	INVITATION	26	Voir	2
+56	Vous avez été affecté à l'invitation : fghj	2026-06-14 20:11:43.148379	INTERNE	f	INVITATION	27	Voir	10
+58	Vous avez été affecté au ticket #16	2026-06-14 21:52:43.872952	INTERNE	f	TICKET	16	Voir	4
+59	Vous avez été affecté à l'invitation : vhbjn	2026-06-14 21:58:21.059653	INTERNE	f	INVITATION	28	Voir	5
+60	Vous avez été affecté à l'invitation : fxdcgvhbn,	2026-06-14 22:00:35.752696	INTERNE	f	INVITATION	23	Voir	6
+57	Vous avez été affecté au ticket #16	2026-06-14 20:13:16.936463	INTERNE	t	TICKET	16	Voir	7
+50	Vous avez été affecté à l'invitation : g fjkl	2026-06-14 05:59:50.73535	INTERNE	t	INVITATION	17	Voir	7
+21	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : cvbnk	2026-06-11 00:41:21.093018	INTERNE	t	INVITATION	14	Voir	9
+13	Vous avez été affecté à l'invitation : xcgvhbn	2026-06-11 00:20:55.45176	INTERNE	t	INVITATION	15	Voir	9
+62	Vous avez été affecté au ticket #17	2026-06-15 03:59:23.19447	INTERNE	f	TICKET	17	Voir	7
+64	Vous avez été affecté à l'invitation : conference	2026-06-15 03:59:56.574112	INTERNE	f	INVITATION	29	Voir	7
+65	Vous avez été affecté à l'invitation : vhbjn	2026-06-15 04:01:05.137513	INTERNE	f	INVITATION	28	Voir	5
+66	Vous avez été affecté à l'invitation : vhbjn	2026-06-15 04:01:05.16093	INTERNE	f	INVITATION	28	Voir	7
+63	Vous avez été affecté à l'invitation : conference	2026-06-15 03:59:56.557217	INTERNE	t	INVITATION	29	Voir	9
+61	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : conference	2026-06-15 03:50:25.729295	INTERNE	t	INVITATION	29	Voir	9
+67	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : conference1	2026-06-15 05:07:59.212426	INTERNE	f	INVITATION	30	Voir	5
+68	Vous avez été affecté à l'invitation : conference1	2026-06-15 05:07:59.224398	INTERNE	f	INVITATION	30	Voir	6
+69	Vous avez été affecté à l'invitation : boton	2026-06-15 19:16:58.21019	INTERNE	f	INVITATION	1	Voir	7
+70	Vous avez été affecté à l'invitation : boton	2026-06-15 19:18:24.916672	INTERNE	f	INVITATION	1	Voir	7
+71	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : boton	2026-06-15 19:18:24.923566	INTERNE	f	INVITATION	1	Voir	6
+72	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : rencontre	2026-06-16 01:29:28.59032	INTERNE	f	INVITATION	4	Voir	6
+73	Vous avez été affecté au ticket #2	2026-06-16 05:33:35.606685	INTERNE	f	TICKET	2	Voir	8
+74	Vous avez été affecté au ticket #2	2026-06-17 01:01:12.086207	INTERNE	t	TICKET	2	Voir	3
+75	Vous avez été affecté à l'invitation : conte	2026-06-17 07:13:17.670862	INTERNE	t	INVITATION	7	Voir	3
+76	Vous avez été affecté au ticket #3	2026-06-17 07:17:09.454391	INTERNE	t	TICKET	3	Voir	3
+77	Vous avez été affecté au ticket #3	2026-06-17 09:32:02.523789	INTERNE	f	TICKET	3	Voir	9
+78	Vous avez été affecté au ticket #3	2026-06-17 09:32:17.196782	INTERNE	f	TICKET	3	Voir	5
+79	Vous avez été affecté au ticket #3	2026-06-17 09:33:04.774732	INTERNE	f	TICKET	3	Voir	4
+81	Vous avez été affecté au ticket #6	2026-06-17 09:42:02.650665	INTERNE	f	TICKET	6	Voir	5
+80	Vous avez été affecté au ticket #5	2026-06-17 09:35:19.999641	INTERNE	t	TICKET	5	Voir	3
+82	Vous avez été affecté au ticket #14	2026-06-18 00:25:48.410548	INTERNE	t	TICKET	14	Voir	3
+84	Vous avez été affecté à l'invitation : pancarte	2026-06-18 17:36:05.614516	INTERNE	t	INVITATION	5	Voir	3
+83	Vous avez été affecté au ticket #16	2026-06-18 17:35:07.831358	INTERNE	t	TICKET	16	Voir	3
+85	Vous avez été affecté à l'invitation : kjlhgfhjk	2026-06-19 07:59:48.784419	INTERNE	t	INVITATION	9	Voir	3
+86	Vous avez été affecté au ticket #13	2026-06-20 07:56:57.351219	INTERNE	t	TICKET	13	Voir	3
+89	Vous avez été affecté à l'invitation : mlkjbhv	2026-06-21 20:32:59.07333	INTERNE	f	INVITATION	19	Voir	5
+88	Vous avez été affecté à l'invitation : mlkjbhv	2026-06-21 20:32:59.06333	INTERNE	t	INVITATION	19	Voir	3
+87	Vous avez été affecté à l'invitation : mlkjbhv	2026-06-21 20:32:24.925826	INTERNE	t	INVITATION	19	Voir	3
+90	Vous avez été affecté au ticket #17	2026-06-22 05:48:35.759125	INTERNE	t	TICKET	17	Voir	3
 \.
 
 
@@ -986,25 +1028,14 @@ COPY public.notification (id, message, date_envoi, canal, statut, categorie, res
 --
 
 COPY public.piece_jointe_invitation (id, nom, type, chemin, date_envoi, invitation_id) FROM stdin;
-1	images.jpg	image/jpeg	invitations/4/56ff8164-5ad7-4d57-a635-8f903bda54a2_images.jpg	2026-06-03 09:39:51.246035	4
-2	PROTOCOLE UNIVERSITE AUBE NOUVELLE2 (3).docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/5/da36bad0-464b-430a-b47b-f3b3b0efb40e_PROTOCOLE UNIVERSITE AUBE NOUVELLE2 (3).docx	2026-06-03 11:00:56.535841	5
-3	logo.jpg	image/jpeg	invitations/6/81dbf3ce-0a21-4896-bcd4-71c3fec00634_logo.jpg	2026-06-04 11:02:25.312881	6
-4	images.jpg	image/jpeg	invitations/7/c35e8ec8-44d1-4c52-89e2-1d186c4d68db_images.jpg	2026-06-08 18:32:18.316399	7
-5	PROTOCOLE UNIVERSITE AUBE NOUVELLE2.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/8/73b06cbf-f9f0-4a5d-9486-c9a3c0e3bf09_PROTOCOLE UNIVERSITE AUBE NOUVELLE2.docx	2026-06-09 01:27:23.799131	8
-6	PROTOCOLE UNIVERSITE AUBE NOUVELLE2 (2).docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/8/3450a89f-4737-4742-98ea-4fa602a7f263_PROTOCOLE UNIVERSITE AUBE NOUVELLE2 (2).docx	2026-06-09 01:27:23.808791	8
-7	PROTOCOLE UNIVERSITE AUBE NOUVELLE2.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/9/15c6d9bf-3d9d-4ce6-a4ad-5a482499baf4_PROTOCOLE UNIVERSITE AUBE NOUVELLE2.docx	2026-06-09 22:46:40.303428	9
-8	invitation_9.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/10/156c565e-c725-4cdd-96cf-32e1996dee8a_invitation_9.docx	2026-06-10 08:47:05.499948	10
-9	invitation_9.pdf	application/pdf	invitations/10/2879516e-f5f4-47a7-8d1d-186e1bee4111_invitation_9.pdf	2026-06-10 08:47:05.506948	10
-10	invitation_9.pdf	application/pdf	invitations/11/0ccca1fb-e8b4-479d-ad9d-9bd4bf3707a8_invitation_9.pdf	2026-06-10 08:57:23.867174	11
-11	invitation_9.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/11/753957d5-2328-4293-82f2-2c3aeb10e559_invitation_9.docx	2026-06-10 08:57:23.868189	11
-12	invitation_9.pdf	application/pdf	invitations/12/61780227-e8ee-4916-9cfd-14b6821f7f50_invitation_9.pdf	2026-06-10 09:36:20.022315	12
-13	invitation_12.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/14/bb16d6fc-cfae-4daa-b84d-99485e753658_invitation_12.docx	2026-06-10 11:31:20.016225	14
-14	invitation_10.pdf	application/pdf	invitations/15/6742cc48-2343-4e3c-ab17-b2b8f5051093_invitation_10.pdf	2026-06-10 22:59:46.483974	15
-15	invitation_9.pdf	application/pdf	invitations/16/4d5332ec-a3d3-465e-bdc1-f05a72580ee7_invitation_9.pdf	2026-06-11 00:44:30.308541	16
-16	invitation_12.pdf	application/pdf	invitations/17/a7977009-1fe4-4c18-8e92-803c038f93ef_invitation_12.pdf	2026-06-11 19:49:30.113194	17
-17	invitation_12.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/17/fb87a120-bf82-4c21-81fb-4cc9c273a5a2_invitation_12.docx	2026-06-11 19:49:30.116245	17
-18	invitation_10.pdf	application/pdf	invitations/17/881a358f-515a-4c7c-88cd-d771246fb287_invitation_10.pdf	2026-06-11 19:49:30.118235	17
-19	invitation_17.pdf	application/pdf	invitations/18/5b4a5d6f-564c-4f43-9b1b-ad9daa1a5c35_invitation_17.pdf	2026-06-14 06:01:20.371371	18
+1	invitation_28.pdf	application/pdf	invitations/1/35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28.pdf	2026-06-15 06:54:30.08294	1
+4	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (2).pdf	application/pdf	invitations/4/f09d0b13-f111-400f-9b0a-dcdb73fab61c_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (2).pdf	2026-06-16 01:28:28.530154	4
+5	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (3).pdf	application/pdf	invitations/4/b14206e8-904d-4941-8d5c-c3cd6631c115_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (3).pdf	2026-06-16 01:28:28.536152	4
+6	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (1).pdf	application/pdf	invitations/4/e9e65f62-3553-4d4d-b0af-ae4dd218741f_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (1).pdf	2026-06-16 01:28:28.538155	4
+7	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (4).pdf	application/pdf	invitations/5/8770f262-8a04-4a02-9960-ea2be30190e2_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (4).pdf	2026-06-16 03:18:23.593344	5
+9	invitation_5.pdf	application/pdf	invitations/7/c2c20b8f-1764-416b-84d7-1190876b36ea_invitation_5.pdf	2026-06-16 05:00:45.250341	7
+10	invitation_30.pdf	application/pdf	invitations/8/99c2b855-be99-464e-a09e-57ddcdcee02a_invitation_30.pdf	2026-06-19 06:54:46.319709	8
+11	A.png	image/png	invitations/21/2a940650-99eb-4c10-ab69-9bd0b1266fc6_A.png	2026-06-22 05:03:28.606929	21
 \.
 
 
@@ -1013,16 +1044,26 @@ COPY public.piece_jointe_invitation (id, nom, type, chemin, date_envoi, invitati
 --
 
 COPY public.piece_jointe_ticket (id, nom, type, chemin, date_envoi, ticket_id) FROM stdin;
-6	invitation_5 (4).docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	tickets/6/b50ccc4d-94df-4d84-a7aa-d589407ca590_invitation_5 (4).docx	2026-06-07 03:11:23.59826	6
-7	route.txt	text/plain	tickets/7/44109c74-6878-40d1-b536-b4e642b4fa5d_route.txt	2026-06-09 01:28:19.444576	7
-8	route.txt	text/plain	tickets/8/32391c7c-ea8f-46f0-9a75-eb782f26b804_route.txt	2026-06-09 06:36:07.249224	8
-9	route.txt	text/plain	tickets/9/5bf8c370-a4bf-465a-afa3-0cbf87bc620d_route.txt	2026-06-09 06:42:58.302853	9
-10	images.jpg	image/jpeg	tickets/10/519e5939-8b8d-4c5c-aa40-426ccdc52335_images.jpg	2026-06-09 21:33:17.006975	10
-11	route.txt	text/plain	tickets/11/3031a5b6-c866-4113-8677-313d67c04b58_route.txt	2026-06-09 22:48:59.727127	11
-12	route.txt	text/plain	tickets/12/8261bc54-f48a-4c9a-866c-63fc791cf92b_route.txt	2026-06-09 23:17:56.617498	12
-13	route.txt	text/plain	tickets/13/e95d5a4e-1b6a-46c3-bc53-e9c018839e2a_route.txt	2026-06-10 05:40:16.879344	13
-14	invitation_10.pdf	application/pdf	tickets/14/0d9e468d-2d81-490a-850f-f5c0485ff408_invitation_10.pdf	2026-06-10 09:47:26.022076	14
-15	invitation_12.pdf	application/pdf	tickets/15/1d53828b-c2ff-428b-a2c4-41e84f64c5a0_invitation_12.pdf	2026-06-10 20:15:06.670094	15
+1	invitation_5.pdf	application/pdf	tickets/1/80bfc412-7c44-4fc3-a717-e419c4d20461_invitation_5.pdf	2026-06-16 05:29:22.695673	1
+2	B.png	image/png	tickets/2/da11f8d5-d56b-4877-9737-a3d07f5d50b1_B.png	2026-06-16 05:31:49.693036	2
+3	B.png	image/png	tickets/3/0c609640-4fef-47fd-b7f1-184625c46071_B.png	2026-06-17 07:16:25.429608	3
+5	Capture d'écran 2026-04-13 140604.png	image/png	tickets/5/4df68ff8-9680-4643-9ef3-460308b12ad6_Capture d'écran 2026-04-13 140604.png	2026-06-17 09:34:36.052561	5
+6	Capture d'écran 2026-04-09 112837.png	image/png	tickets/6/96cb62a9-82a9-4dc6-991e-b9090cb257a0_Capture d'écran 2026-04-09 112837.png	2026-06-17 09:41:45.343157	6
+7	Capture d'écran 2026-04-09 112837.png	image/png	tickets/7/ecc08629-478c-44b3-b51e-55a27726061c_Capture d'écran 2026-04-09 112837.png	2026-06-17 09:55:23.973698	7
+8	Capture d'écran 2026-04-09 112837.png	image/png	tickets/8/93e5fe80-d00d-47c4-a6bb-541eb03b9d85_Capture d'écran 2026-04-09 112837.png	2026-06-17 09:56:21.706841	8
+9	Capture d'écran 2026-04-09 112837.png	image/png	tickets/12/8fe4329e-d1a3-46f4-a8fd-e01e67607e0f_Capture d'écran 2026-04-09 112837.png	2026-06-17 11:04:47.503078	12
+10	Capture d'écran 2026-04-09 112837.png	image/png	tickets/13/8ec83f30-d4d6-4f3b-b360-ccc054f0eb01_Capture d'écran 2026-04-09 112837.png	2026-06-17 21:03:06.685113	13
+11	A.png	image/png	tickets/14/95976e9f-dd59-489d-80be-0883dbcd0f1e_A.png	2026-06-17 21:10:48.019891	14
+12	B.png	image/png	tickets/14/1944c450-762c-4128-8d06-5962b685321f_B.png	2026-06-17 21:10:48.026579	14
+13	Capture d'écran 2026-03-25 094806.png	image/png	tickets/14/d25aec71-f9ea-468f-96eb-4e2d9a4bc3b2_Capture d'écran 2026-03-25 094806.png	2026-06-17 21:10:48.026579	14
+14	C.png	image/png	tickets/14/6af7c8f2-d63c-49b6-aba4-0c28d7f05b8d_C.png	2026-06-17 21:10:48.035001	14
+15	Capture d'écran 2026-03-25 094806.png	image/png	tickets/15/0f86d12f-3397-48ec-8906-84057e0fbab7_Capture d'écran 2026-03-25 094806.png	2026-06-18 17:32:54.016591	15
+16	B.png	image/png	tickets/15/00289271-27e0-40bd-836b-573765a00d72_B.png	2026-06-18 17:32:54.023951	15
+17	C.png	image/png	tickets/15/ae259374-1a65-4ea6-88a7-dade954ce230_C.png	2026-06-18 17:32:54.025971	15
+26	A.png	image/png	tickets/17/f1196958-1d68-48e3-b5b2-8779aa2dc7d4_A.png	2026-06-22 01:34:02.315851	17
+27	B.png	image/png	tickets/17/a13bd7f1-5a33-4e48-b799-420a00e09565_B.png	2026-06-22 01:34:02.320853	17
+28	Capture d'écran 2026-06-21 160952.png	image/png	tickets/17/3e3acd5b-c4e1-4224-ba97-43e8504212b1_Capture d'écran 2026-06-21 160952.png	2026-06-22 01:34:02.321848	17
+29	Capture d'écran 2026-06-21 165421.png	image/png	tickets/17/d6b3f285-dfb1-4e94-bf24-b6770162cb6d_Capture d'écran 2026-06-21 165421.png	2026-06-22 01:34:02.322851	17
 \.
 
 
@@ -1043,10 +1084,10 @@ COPY public.role (id, nom, description) FROM stdin;
 --
 
 COPY public.service (id, nom, description, structure_id) FROM stdin;
-1	Statistique	Service des statistiques	\N
-2	DMP	Direction des marchÃ©s publics	\N
-3	RH	Ressources humaines	\N
-4	BCMP	Bureau de coordination	\N
+7	it	iert	\N
+8	Unité de système d'information	USI	\N
+9	SEST	Service Equipement et Support Technique	\N
+10	SRS	le Service Réseaux et Systèmes	\N
 \.
 
 
@@ -1055,10 +1096,9 @@ COPY public.service (id, nom, description, structure_id) FROM stdin;
 --
 
 COPY public.structure (id, nom, adresse, telephone, email) FROM stdin;
-1	DSI MinistÃ¨re BF	Ouagadougou, Burkina Faso	+226 25 30 00 00	dsi@ministere.gov.bf
-2	ANSI	Ouagadougou, Burkina Faso	+226 25 31 00 00	contact@ansi.bf
-3	MATD	Ouagadougou, Burkina Faso	+226 25 32 00 00	contact@matd.gov.bf
-4	ARCEP	Ouagadougou, Burkina Faso	+226 25 33 00 00	contact@arcep.bf
+20	commerce	ouaga	65748484	commerce@gmail.com
+21	bureau	bobo	75896985	bureau@gmail.com
+22	DSI	MESFPT	25252525	dsi@gmail.com
 \.
 
 
@@ -1067,6 +1107,20 @@ COPY public.structure (id, nom, adresse, telephone, email) FROM stdin;
 --
 
 COPY public.structure_invitee (id, invitation_id, structure_id, statut_reponse, date_envoi, date_reponse, lettre_chemin, lettre_generee, commentaire) FROM stdin;
+1	8	20	EN_ATTENTE	2026-06-19 06:54:46.303617	\N	\N	f	\N
+2	9	21	EN_ATTENTE	2026-06-19 07:19:23.074521	\N	\N	f	\N
+3	10	21	EN_ATTENTE	2026-06-21 02:57:36.685561	\N	\N	f	\N
+4	11	20	EN_ATTENTE	2026-06-21 03:13:55.099342	\N	\N	f	\N
+5	12	21	EN_ATTENTE	2026-06-21 03:24:42.929749	\N	\N	f	\N
+6	13	21	EN_ATTENTE	2026-06-21 03:45:36.235815	\N	\N	f	\N
+7	15	21	EN_ATTENTE	2026-06-21 16:59:24.760508	\N	\N	f	\N
+8	16	21	EN_ATTENTE	2026-06-21 17:09:29.650376	\N	\N	f	\N
+9	17	21	EN_ATTENTE	2026-06-21 17:51:43.179098	\N	\N	f	\N
+10	18	21	EN_ATTENTE	2026-06-21 17:58:01.291955	\N	\N	f	\N
+11	19	21	EN_ATTENTE	2026-06-21 17:58:50.434513	\N	\N	f	\N
+12	20	22	EXCUSEE	2026-06-21 23:30:11.655173	\N	\N	f	\N
+13	21	22	EN_ATTENTE	2026-06-22 05:03:28.590316	\N	\N	f	\N
+14	21	21	EN_ATTENTE	2026-06-22 05:03:28.591226	\N	\N	f	\N
 \.
 
 
@@ -1074,18 +1128,22 @@ COPY public.structure_invitee (id, invitation_id, structure_id, statut_reponse, 
 -- Data for Name: ticket; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.ticket (id, date_creation, statut, priorite, solution, structure_id, createur_id, description) FROM stdin;
-5	2026-06-05 18:09:52.190194	FERME	MOYENNE	\N	\N	\N	higuhj
-6	2026-06-07 03:11:23.577189	FERME	MOYENNE	\N	\N	\N	cvbn,
-7	2026-06-09 01:28:19.43358	EN_COURS	MOYENNE	\N	\N	\N	KJHVCXCHJK
-8	2026-06-09 06:36:07.168293	EN_COURS	MOYENNE	\N	\N	\N	jkxlc
-9	2026-06-09 06:42:58.288157	EN_COURS	MOYENNE	\N	\N	\N	vcbn,k
-10	2026-06-09 21:33:16.99241	EN_COURS	MOYENNE	\N	\N	\N	jbn,b
-11	2026-06-09 22:48:59.720012	EN_COURS	MOYENNE	\N	\N	\N	wdfgh
-12	2026-06-09 23:17:56.602588	EN_COURS	MOYENNE	\N	\N	\N	BJ DN
-13	2026-06-10 05:40:16.806509	EN_COURS	MOYENNE	\N	\N	\N	jgvbn,
-14	2026-06-10 09:47:25.99907	EN_PAUSE	MOYENNE	\N	\N	\N	dgjhk
-15	2026-06-10 20:15:06.621289	RESOLU	MOYENNE	\N	\N	\N	bhjkn,
+COPY public.ticket (id, date_creation, statut, priorite, solution, structure_id, createur_id, description, whatsapp) FROM stdin;
+1	2026-06-16 05:29:22.667885	EN_ATTENTE	MOYENNE	\N	\N	\N	djk	\N
+2	2026-06-16 05:31:49.686064	EN_COURS	MOYENNE	\N	\N	\N	yujk	\N
+3	2026-06-17 07:16:25.404322	EN_PAUSE	MOYENNE	\N	\N	3	sdfghjk	\N
+11	2026-06-17 10:57:01.993226	EN_ATTENTE	MOYENNE	\N	\N	3	jksn	+22606031093
+5	2026-06-17 09:34:36.045448	EN_PAUSE	MOYENNE	\N	\N	3	dfcghjk	+22606031093
+9	2026-06-17 10:07:26.067231	EN_ATTENTE	MOYENNE	\N	\N	\N	bnk	+22606031093
+10	2026-06-17 10:17:08.626071	EN_ATTENTE	MOYENNE	\N	\N	\N	ghjkl;	+22606031093
+12	2026-06-17 11:04:47.419852	EN_ATTENTE	MOYENNE	\N	\N	\N	cvghjzkl	+22605686969
+6	2026-06-17 09:41:45.336069	EN_PAUSE	MOYENNE	\N	\N	3	xcvbn	+26606031093
+7	2026-06-17 09:55:23.967713	EN_ATTENTE	MOYENNE	\N	\N	\N	xghvbn	+22606031093
+8	2026-06-17 09:56:21.699923	EN_ATTENTE	MOYENNE	\N	\N	\N	fghj	+22606031093
+14	2026-06-17 21:10:47.701583	EN_PAUSE	MOYENNE	\N	\N	\N	teue	+22606031093
+15	2026-06-18 17:32:53.902927	EN_ATTENTE	FAIBLE	\N	20	\N	dfghjk	\N
+13	2026-06-17 21:03:06.598874	EN_COURS	MOYENNE	\N	\N	\N	hgfghj	+22606031093
+17	2026-06-22 01:34:02.292781	EN_COURS	MOYENNE	\N	22	\N	poiuyu	78659854
 \.
 
 
@@ -1098,12 +1156,14 @@ COPY public.utilisateur (user_id, nom, prenom, email, telephone, mot_de_passe, d
 3	Admin	DSI	admin2@dsi.gov.bf	\N	$2a$10$a9eCuoE6YfaVu9jc3z1RHuDZ4jlTsiLXMK/k5AFLGzulU5jLD/Z2G	2026-06-02 22:52:48.08875	\N	t	\N	\N
 4	konate	rachi	rachi1@gmail.com	\N	$2a$10$.PSKtKJTejrgQLYNq7e6l.d94cA3M/8yJAWTHyJFxmffmTCfR6wei	2026-06-03 13:13:24.60639	\N	t	\N	\N
 5	barro	rachid	rachid@gmail.com	76546354	$2a$10$x9EnQJpMztr6vEuPN6BvX.G1zxV6WsD3VfGNp0OSg/GeQKQe.ql5C	2026-06-03 13:21:00.936637	1233	t	\N	\N
-7	barro	prenom	rachidabarro66@gmail.com	67847383	$2a$10$rBz9wXxBhoiC//FUVHCbm.VWY6.Z1D8vmjlqG0HpHvII./CqHpwme	2026-06-09 01:17:40.932874	123	t	\N	\N
 8	kone	rachi	kone@gmail.com	\N	$2a$10$zpVbSZXy0/AFzLElWvoKSe1xShtq2Xvt0iNN.aW8ye0yktnBg7NRW	2026-06-09 19:26:07.561549	\N	t	\N	\N
 9	rachida	barro	rachidabarro@gmail.com	76847464	$2a$10$UHpIq24G/qOzuynyax7cMuJywrFaJpoCzDsBSvL4/A1819vwW2d8e	2026-06-09 23:16:42.856016	23	t	\N	\N
 1	rachi	konte	rachi@gmail.com	54637383	$2a$10$X.J.YQwzP2zLhhk3LobZwORPc2C12p8aWXI6PH3I9TNaXPhouHH3y	2026-06-01 15:54:10.743005	1234	t	\N	\N
-6	barro	rachi	rachidabarro98@mail.com	78674345	$2a$10$8zeyvxNk9YrYzl1Vsp/P.ulTUOlsd5zpiS98rfGvvRujMaDNGTQry	2026-06-09 01:10:57.386182	4354	t	\N	\N
 10	raz	ros	rosraz@gmail.com	\N	$2a$10$Hx.0iIjXgnMrFdlE3tbfRu3d33gSOBIsx3jXQHyOVixqQsTh4FdaG	2026-06-11 21:05:53.520787	\N	t	\N	\N
+11	nomo	mom	nomo@gmail.com	\N	$2a$10$pzUs8C2BpV5wdith/OP9nOV9XBHVVerHzhT4Bx4UK5BxqOo4BWTx2	2026-06-14 19:15:54.146221	\N	t	\N	\N
+7	barro	prenom	rachidabarro66@gmail.com	67847383	$2a$10$OLk2vwQyQ2zPDyiKJVIghuOButJArvAUWcaHAScz0rwDwYeHbaoZK	2026-06-09 01:17:40.932874	123	t	\N	\N
+12	nnn	lk	nnn@gmail.com	\N	$2a$10$qyqHtCcA9QiM/RWUx9OFRuteLlbBmS762tHMp9DkAgnGb0bNxeo3u	2026-06-14 19:20:22.022311	\N	f	\N	\N
+6	barro	rachi	rachidabarro98@mail.com	78674345	$2a$10$8zeyvxNk9YrYzl1Vsp/P.ulTUOlsd5zpiS98rfGvvRujMaDNGTQry	2026-06-09 01:10:57.386182	4354	f	\N	\N
 \.
 
 
@@ -1119,9 +1179,11 @@ COPY public.utilisateur_role (id, user_id, role_id) FROM stdin;
 5	5	2
 6	6	2
 9	9	1
-10	10	4
 11	8	2
 12	7	2
+14	10	2
+15	12	4
+16	11	2
 \.
 
 
@@ -1129,14 +1191,14 @@ COPY public.utilisateur_role (id, user_id, role_id) FROM stdin;
 -- Name: affectation_invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.affectation_invitation_id_seq', 36, true);
+SELECT pg_catalog.setval('public.affectation_invitation_id_seq', 10, true);
 
 
 --
 -- Name: affectation_ticket_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.affectation_ticket_id_seq', 18, true);
+SELECT pg_catalog.setval('public.affectation_ticket_id_seq', 12, true);
 
 
 --
@@ -1164,28 +1226,28 @@ SELECT pg_catalog.setval('public.communication_id_seq', 1, false);
 -- Name: invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.invitation_id_seq', 18, true);
+SELECT pg_catalog.setval('public.invitation_id_seq', 21, true);
 
 
 --
 -- Name: notification_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.notification_id_seq', 51, true);
+SELECT pg_catalog.setval('public.notification_id_seq', 90, true);
 
 
 --
 -- Name: piece_jointe_invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.piece_jointe_invitation_id_seq', 19, true);
+SELECT pg_catalog.setval('public.piece_jointe_invitation_id_seq', 11, true);
 
 
 --
 -- Name: piece_jointe_ticket_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.piece_jointe_ticket_id_seq', 15, true);
+SELECT pg_catalog.setval('public.piece_jointe_ticket_id_seq', 29, true);
 
 
 --
@@ -1199,42 +1261,42 @@ SELECT pg_catalog.setval('public.role_id_seq', 4, true);
 -- Name: service_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.service_id_seq', 4, true);
+SELECT pg_catalog.setval('public.service_id_seq', 10, true);
 
 
 --
 -- Name: structure_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.structure_id_seq', 4, true);
+SELECT pg_catalog.setval('public.structure_id_seq', 22, true);
 
 
 --
 -- Name: structure_invitee_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.structure_invitee_id_seq', 1, false);
+SELECT pg_catalog.setval('public.structure_invitee_id_seq', 14, true);
 
 
 --
 -- Name: ticket_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.ticket_id_seq', 15, true);
+SELECT pg_catalog.setval('public.ticket_id_seq', 17, true);
 
 
 --
 -- Name: utilisateur_role_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.utilisateur_role_id_seq', 12, true);
+SELECT pg_catalog.setval('public.utilisateur_role_id_seq', 16, true);
 
 
 --
 -- Name: utilisateur_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.utilisateur_user_id_seq', 10, true);
+SELECT pg_catalog.setval('public.utilisateur_user_id_seq', 12, true);
 
 
 --
@@ -1714,5 +1776,5 @@ REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict kXSlYbAZQlBUDePz18RJgWe3yxcq5nBGrbs3QVRj7PvvvaihywRO1ooSaIxVrcb
+\unrestrict BaYpetEh4MJBlTqmhK8F6qS0tT63NPNUsZI59F1JSd2V7rXlf30iCwTgkXI64UI
 

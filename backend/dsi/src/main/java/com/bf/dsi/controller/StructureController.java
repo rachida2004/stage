@@ -1,10 +1,12 @@
 package com.bf.dsi.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*; // Importation groupée pour simplifier
+import org.springframework.web.bind.annotation.*;
 import com.bf.dsi.entity.Structure;
+import com.bf.dsi.entity.Service; // 🎯 Utilise votre entité Service
 import com.bf.dsi.repository.StructureRepository;
-import java.util.List; // Importation manquante
+import com.bf.dsi.repository.ServiceRepository; // 🎯 Utilise votre repository
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/structures")
@@ -13,9 +15,21 @@ public class StructureController {
     @Autowired
     private StructureRepository repository;
 
+    @Autowired
+    private ServiceRepository serviceRepository; // Injection du repository des services
+
     @GetMapping
     public List<Structure> listerStructure() {
         return repository.findAll();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // 💡 ENDPOINT DE FILTRAGE DYNAMIQUE
+    // Récupère uniquement les services d'une structure (ex: SEST, SRS pour la DSI)
+    // ════════════════════════════════════════════════════════════════════
+    @GetMapping("/{id}/services")
+    public List<Service> listerServicesParStructure(@PathVariable Long id) {
+        return serviceRepository.findByStructureId(id);
     }
 
     @PostMapping

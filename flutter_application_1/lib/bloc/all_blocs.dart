@@ -134,6 +134,9 @@ class LoadInvDetail extends InvitationEvent { final String id; LoadInvDetail(thi
 // 🎯 AJOUT DE L'ÉVÉNEMENT POUR LE CLIC SUR "REÇU"
 class LoadInvitationsRecues extends InvitationEvent {}
 
+// 🎯 AJOUT DE L'ÉVÉNEMENT POUR LE CLIC SUR "ENVOYER"
+class LoadInvitationsEnvoyees extends InvitationEvent {}
+
 class CreateInvitation extends InvitationEvent {
   final Map<String, dynamic> data;
   final List<String> filePaths;
@@ -157,6 +160,27 @@ class AssignerAgentsInvitation extends InvitationEvent {
   @override List<Object?> get props => [invId, agentIds, responsableId];
 }
 
+// 🎯 CRUD structure_invitee : gestion des structures destinataires d'une invitation
+class AjouterStructureInvitee extends InvitationEvent {
+  final String invId;
+  final int structureId;
+  AjouterStructureInvitee({required this.invId, required this.structureId});
+  @override List<Object?> get props => [invId, structureId];
+}
+
+class ModifierStatutStructureInvitee extends InvitationEvent {
+  final int structureInviteeId;
+  final String statutReponse;
+  ModifierStatutStructureInvitee({required this.structureInviteeId, required this.statutReponse});
+  @override List<Object?> get props => [structureInviteeId, statutReponse];
+}
+
+class SupprimerStructureInvitee extends InvitationEvent {
+  final int structureInviteeId;
+  SupprimerStructureInvitee({required this.structureInviteeId});
+  @override List<Object?> get props => [structureInviteeId];
+}
+
 abstract class InvitationState extends Equatable { @override List<Object?> get props => []; }
 class InvitationInitial extends InvitationState {}
 class InvitationLoading extends InvitationState {}
@@ -177,8 +201,8 @@ class InvitationBloc extends Bloc<InvitationEvent, InvitationState> {
       try {
         await _s.create(e.data, fileBytes: e.fileBytes);
         emit(InvitationSuccess('Invitation créée'));
-        final nouvellePage = await _s.getAll(page: 0);
-        emit(InvitationsLoaded(nouvellePage));
+        // Le rechargement de la liste (Reçu ou Envoyer) est géré par l'écran
+        // appelant, selon l'onglet courant et le modeCreation de l'invitation.
       } catch (err) { emit(InvitationError(err.toString())); }
     });
     
@@ -198,13 +222,48 @@ class InvitationBloc extends Bloc<InvitationEvent, InvitationState> {
       } catch (err) { emit(InvitationError(err.toString())); }
     });
 
+    // 🎯 CRUD structure_invitee : ajout / modification / suppression d'une structure destinataire
+    on<AjouterStructureInvitee>((e, emit) async {
+      emit(InvitationLoading());
+      try {
+        final inv = await _s.ajouterStructureInvitee(e.invId, e.structureId);
+        emit(InvDetailLoaded(inv));
+      } catch (err) { emit(InvitationError(err.toString())); }
+    });
+
+    on<ModifierStatutStructureInvitee>((e, emit) async {
+      emit(InvitationLoading());
+      try {
+        final inv = await _s.modifierStatutStructureInvitee(e.structureInviteeId, e.statutReponse);
+        emit(InvDetailLoaded(inv));
+      } catch (err) { emit(InvitationError(err.toString())); }
+    });
+
+    on<SupprimerStructureInvitee>((e, emit) async {
+      emit(InvitationLoading());
+      try {
+        final inv = await _s.supprimerStructureInvitee(e.structureInviteeId);
+        emit(InvDetailLoaded(inv));
+      } catch (err) { emit(InvitationError(err.toString())); }
+    });
+
     // 🎯 REPLACÉ À L'INTÉRIEUR DU CONSTRUCTEUR ET CORRIGÉ AVEC "_s"
     on<LoadInvitationsRecues>((event, emit) async {
       emit(InvitationLoading());
       try {
-        // Utilisation correcte du service _s
-        final invitations = await _s.getInvitationsRecues(); 
-        emit(InvitationsLoaded(invitations)); 
+        // 🎯 Le backend filtre désormais par modeCreation = "CREER"
+        final invitations = await _s.getInvitationsRecues();
+        emit(InvitationsLoaded(invitations));
+      } catch (e) {
+        emit(InvitationError(e.toString()));
+      }
+    });
+
+    on<LoadInvitationsEnvoyees>((event, emit) async {
+      emit(InvitationLoading());
+      try {
+        final invitations = await _s.getInvitationsEnvoyees();
+        emit(InvitationsLoaded(invitations));
       } catch (e) {
         emit(InvitationError(e.toString()));
       }

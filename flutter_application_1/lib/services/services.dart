@@ -81,6 +81,19 @@ class InvitationService {
     }
   }
 
+  // 🎯 AJOUT : Récupération des invitations envoyées (créées par l'administration)
+  Future<InvitationPage> getInvitationsEnvoyees({int page = 0, String? search, InvitationStatus? status}) async {
+    try {
+      final Map<String, dynamic> query = {'page': page, 'size': 10};
+      if (search != null && search.isNotEmpty) query['search'] = search;
+      if (status != null) query['statut'] = status.apiValue;
+      final res = await _api.dio.get('${ApiConstants.invitations}/envoyees', queryParameters: query);
+      return InvitationPage.fromJson(res.data);
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
   Future<Invitation> getById(String id) async {
     try { return Invitation.fromJson((await _api.dio.get('${ApiConstants.invitations}/$id')).data); }
     on DioException catch (e) { throw ApiException.fromDio(e); }
@@ -100,6 +113,22 @@ class InvitationService {
       if (data['dateDebut'] != null) payload['dateDebut'] = data['dateDebut'];
       if (data['dateFin'] != null)   payload['dateFin']   = data['dateFin'];
       if (data['structureEmettriceId'] != null) payload['structureEmettriceId'] = data['structureEmettriceId'];
+
+      // ── Champs de la lettre officielle ───────────────────────────
+      if (data['numeroReference'] != null)   payload['numeroReference']   = data['numeroReference'];
+      if (data['ville'] != null)             payload['ville']             = data['ville'];
+      if (data['contenu'] != null)           payload['contenu']           = data['contenu'];
+      if (data['ampliation'] != null)        payload['ampliation']        = data['ampliation'];
+      if (data['signataireNom'] != null)     payload['signataireNom']     = data['signataireNom'];
+      if (data['signataireQualite'] != null) payload['signataireQualite'] = data['signataireQualite'];
+      if (data['modeCreation'] != null)      payload['modeCreation']      = data['modeCreation'];
+
+      // ── Structures destinataires (structure_invitee) ─────────────
+      if (data['structureIds'] != null) {
+        final ids = (data['structureIds'] as List).map((e) => e.toString()).toList();
+        if (ids.isNotEmpty) payload['structureIds'] = ids;
+      }
+
       if (fileBytes.isNotEmpty) {
         payload['files'] = fileBytes.map((f) =>
           MultipartFile.fromBytes(f.value, filename: f.key)).toList();
@@ -146,6 +175,37 @@ class InvitationService {
       final res = await _api.dio.post(
         '${ApiConstants.invitations}/$invId/affecter',
         data: {'agentIds': parsedIds, 'responsableId': parsedResp},
+      );
+      return Invitation.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  // ── CRUD structure_invitee : structures destinataires d'une invitation ──
+
+  Future<Invitation> ajouterStructureInvitee(String invitationId, int structureId) async {
+    try {
+      final res = await _api.dio.post(
+        '${ApiConstants.invitations}/$invitationId/structures-invitees',
+        data: {'structureId': structureId},
+      );
+      return Invitation.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<Invitation> modifierStatutStructureInvitee(int structureInviteeId, String statutReponse) async {
+    try {
+      final res = await _api.dio.put(
+        '${ApiConstants.invitations}/structures-invitees/$structureInviteeId',
+        data: {'statutReponse': statutReponse},
+      );
+      return Invitation.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<Invitation> supprimerStructureInvitee(int structureInviteeId) async {
+    try {
+      final res = await _api.dio.delete(
+        '${ApiConstants.invitations}/structures-invitees/$structureInviteeId',
       );
       return Invitation.fromJson(res.data);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
@@ -341,10 +401,15 @@ class DashboardService {
     try {
       final res  = await _api.dio.get(ApiConstants.invitations, queryParameters: {'page': 0, 'size': 5});
       final data = res.data;
-      if (data is Map && data.containsKey('content'))
-        return (data['content'] as List).map((e) => Invitation.fromJson(e)).toList();
-      if (data is List) return data.map((e) => Invitation.fromJson(e)).toList();
-      return [];
+      List<Invitation> liste = [];
+      if (data is Map && data.containsKey('content')) {
+        liste = (data['content'] as List).map((e) => Invitation.fromJson(e)).toList();
+      } else if (data is List) {
+        liste = data.map((e) => Invitation.fromJson(e)).toList();
+      }
+      // 🎯 Les invitations créées via "Créer" (lettres officielles) ne doivent
+      // pas apparaître sur le tableau de bord — uniquement celles "Enregistrer".
+      return liste.where((inv) => inv.modeCreation != 'CREER').toList();
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
@@ -533,6 +598,15 @@ Future<List<AppUser>> getUsers() async {
   Future<void> deleteService(int id) async {
     try { await _api.dio.delete('/api/services/$id'); }
     on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+// 🎯 Récupère la liste des services associés à une structure spécifique depuis l'API backend
+  Future<List<Service>> getServicesByStructure(int structureId) async {
+    try {
+      final res = await _api.dio.get('/api/structures/$structureId/services');
+      return (res.data as List).map((json) => Service.fromJson(json)).toList();
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
   }
 }
 

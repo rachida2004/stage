@@ -44,11 +44,21 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
-                
+
+                // 🎯 Swagger / OpenAPI — accès libre pour les tests manuels
+                .requestMatchers(
+                    "/swagger-ui/**", "/swagger-ui.html",
+                    "/v3/api-docs/**", "/v3/api-docs.yaml"
+                ).permitAll()
+
                 // 🎯 Autorise le téléchargement des pièces jointes sans token JWT
                 .requestMatchers("/api/files/download/**").permitAll()
-                
+
+                // 🎯 Permet l'ouverture directe des liens d'export PDF/Word dans un nouvel onglet
+                // (navigation directe = pas d'en-tête Authorization possible)
                 .requestMatchers("/api/invitations/*/export/**").permitAll()
+                
+                .requestMatchers("/api/invitations/*/export/**").hasAnyAuthority("ADMIN")
                 .requestMatchers("/api/dashboard/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/agents").permitAll()

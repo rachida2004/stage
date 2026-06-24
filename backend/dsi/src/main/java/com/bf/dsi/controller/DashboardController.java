@@ -19,13 +19,17 @@ public class DashboardController {
     @GetMapping("/stats")
     public ResponseEntity<?> getStats() {
         try {
+            // 🎯 Les invitations créées via "Créer" (lettres officielles) ne sont
+            // pas comptabilisées sur le tableau de bord — seules celles créées
+            // via "Enregistrer" entrent dans ces statistiques.
+            final String mode = "ENREGISTRER";
             Map<String, Object> stats = new LinkedHashMap<>();
-            stats.put("totalInvitations",       invitationRepo.count());
-            stats.put("invitationsEnAttente",   invitationRepo.countByStatut(StatutInvitation.EN_ATTENTE));
-            stats.put("invitationsPlanifiees",  invitationRepo.countByStatut(StatutInvitation.PLANIFIEE));
-            stats.put("invitationsEnCours",     invitationRepo.countByStatut(StatutInvitation.EN_COURS));
-            stats.put("invitationsTerminees",   invitationRepo.countByStatut(StatutInvitation.TERMINEE));
-            stats.put("invitationsNonTraitees", invitationRepo.countByStatut(StatutInvitation.NON_TRAITEE));
+            stats.put("totalInvitations",       invitationRepo.countByModeCreation(mode));
+            stats.put("invitationsEnAttente",   invitationRepo.countByStatutAndModeCreation(StatutInvitation.EN_ATTENTE, mode));
+            stats.put("invitationsPlanifiees",  invitationRepo.countByStatutAndModeCreation(StatutInvitation.PLANIFIEE, mode));
+            stats.put("invitationsEnCours",     invitationRepo.countByStatutAndModeCreation(StatutInvitation.EN_COURS, mode));
+            stats.put("invitationsTerminees",   invitationRepo.countByStatutAndModeCreation(StatutInvitation.TERMINEE, mode));
+            stats.put("invitationsNonTraitees", invitationRepo.countByStatutAndModeCreation(StatutInvitation.NON_TRAITEE, mode));
             stats.put("totalTickets",           ticketRepo.count());
             stats.put("ticketsOuverts",         ticketRepo.countByStatutNot(StatutTicket.FERME));
             stats.put("totalUsers",             utilisateurRepo.count());
@@ -45,8 +49,9 @@ public class DashboardController {
     @GetMapping("/invitations-recentes")
     public ResponseEntity<?> getRecentInvitations() {
         try {
-            Page<com.bf.dsi.entity.Invitation> page = invitationRepo.findAllFiltered(
-                null, null, PageRequest.of(0, 5, Sort.by("dateCreation").descending()));
+            // 🎯 Idem : on n'affiche que les invitations "Enregistrer" sur le tableau de bord
+            Page<com.bf.dsi.entity.Invitation> page = invitationRepo.findByModeCreationOrderByIdDesc(
+                "ENREGISTRER", PageRequest.of(0, 5));
             return ResponseEntity.ok(page.getContent().stream().map(i -> Map.of(
                 "id", i.getId(),
                 "objet", i.getObjet() != null ? i.getObjet() : "",

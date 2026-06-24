@@ -412,8 +412,7 @@ class _StructuresServicesTabState extends State<_StructuresServicesTab> {
   }
 
   // ── SERVICE CRUD ─────────────────────────────────────────────────
-
-  void _showServiceForm({Service? service}) {
+void _showServiceForm({Service? service}) {
     final nomCtrl  = TextEditingController(text: service?.nom ?? '');
     final descCtrl = TextEditingController(text: service?.description ?? '');
     Structure? selectedStructure = service?.structure ??
@@ -456,12 +455,16 @@ class _StructuresServicesTabState extends State<_StructuresServicesTab> {
                     const SnackBar(content: Text('Le nom est obligatoire')));
                   return;
                 }
+                
                 Navigator.pop(ctx);
+
+                // 🎯 CONSTITUTION DU PAYLOAD AVEC LA RELATION STRUCTURE IMBRIQUÉE
                 final payload = {
                   'nom': nomCtrl.text.trim(),
                   'description': descCtrl.text.trim(),
-                  if (selectedStructure?.id != null) 'structureId': selectedStructure!.id,
+                 if (selectedStructure != null) 'structureId': selectedStructure!.id,
                 };
+
                 try {
                   if (service == null) {
                     await sl<AdminService>().createService(payload);
@@ -848,39 +851,66 @@ class _UserFormSheetState extends State<_UserFormSheet> {
 
   Structure? _selectedStructure;
   Service?   _selectedService;
-  List<Service> _filteredServices = [];  // Services filtrés par structure
+  List<Service> _filteredServices = [];  // Sera remplie dynamiquement via l'API
   UserRole?  _selectedRole;
+  bool _loadingServices = false; // Pour afficher un indicateur de chargement si besoin
 
   bool get _isEditing => widget.user != null;
 
   @override
   void initState() {
     super.initState();
-    _filteredServices = widget.services;
     if (_isEditing) {
       final u = widget.user!;
       _nomCtrl.text    = u.nom;
       _prenomCtrl.text = u.prenom ?? '';
       _emailCtrl.text  = u.email;
       _selectedRole    = u.role;
-      // Pré-sélection structure/service par nom
-      try {
-        _selectedStructure = widget.structures.firstWhere((s) => s.nom == u.structure);
-        _filteredServices  = widget.services.where((s) => s.structure?.nom == u.structure).toList();
-        _selectedService   = _filteredServices.firstWhere((s) => s.nom == u.service);
-      } catch (_) {}
+      
+      // Initialisation en mode édition
+      _initEditionData(u);
     }
   }
 
-  void _onStructureChanged(Structure? s) {
+  // Fonction pour pré-charger les données de la structure et ses services en mode édition
+  void _initEditionData(AppUser u) async {
+    try {
+      _selectedStructure = widget.structures.firstWhere((s) => s.nom == u.structure);
+      if (_selectedStructure != null) {
+        // Appeler le service API pour récupérer les services de la structure
+        final services = await sl<AdminService>().getServicesByStructure(_selectedStructure!.id!);
+        setState(() {
+          _filteredServices = services;
+          _selectedService  = _filteredServices.firstWhere((s) => s.nom == u.service);
+        });
+      }
+    } catch (_) {}
+  }
+
+  // 🎯 C'est ici qu'on appelle l'API lors du changement de structure
+  void _onStructureChanged(Structure? s) async {
     setState(() {
       _selectedStructure = s;
-      _selectedService   = null;
-      // ✅ Filtrer les services qui appartiennent à cette structure
-      _filteredServices  = s == null
-          ? widget.services
-          : widget.services.where((svc) => svc.structure?.id == s.id).toList();
+      _selectedService   = null; // Réinitialise le service sélectionné
+      _filteredServices  = [];  // Vide la liste précédente
     });
+
+    if (s != null) {
+      setState(() => _loadingServices = true);
+      try {
+        // 🚀 Appel à votre méthode d'API fraîchement créée
+        final services = await sl<AdminService>().getServicesByStructure(s.id!);
+        setState(() {
+          _filteredServices = services;
+        });
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors du chargement des services : $e'), backgroundColor: AppColors.danger),
+        );
+      } finally {
+        setState(() => _loadingServices = false);
+      }
+    }
   }
 
   @override
@@ -955,7 +985,7 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                 ),
                 const SizedBox(height: 12),
 
-                // ✅ Dropdown Structure dynamique
+                // Dropdown Structure
                 DropdownButtonFormField<Structure>(
                   value: _selectedStructure,
                   decoration: const InputDecoration(labelText: 'Structure', prefixIcon: Icon(Icons.domain, size: 18)),
@@ -967,15 +997,17 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                 ),
                 const SizedBox(height: 12),
 
-                // ✅ Dropdown Service filtré par structure sélectionnée
+                // Dropdown Service filtré dynamiquement
                 DropdownButtonFormField<Service>(
                   value: _selectedService,
                   decoration: const InputDecoration(labelText: 'Service', prefixIcon: Icon(Icons.miscellaneous_services, size: 18)),
-                  hint: Text(_selectedStructure == null
-                      ? 'Choisissez d\'abord une structure'
-                      : _filteredServices.isEmpty
-                          ? 'Aucun service pour cette structure'
-                          : 'Sélectionner un service'),
+                  hint: Text(_loadingServices 
+                      ? 'Chargement des services...' 
+                      : _selectedStructure == null
+                          ? 'Choisissez d\'abord une structure'
+                          : _filteredServices.isEmpty
+                              ? 'Aucun service pour cette structure'
+                              : 'Sélectionner un service'),
                   items: _filteredServices
                       .map((s) => DropdownMenuItem(value: s, child: Text(s.nom)))
                       .toList(),

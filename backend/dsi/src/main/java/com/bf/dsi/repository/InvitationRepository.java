@@ -7,6 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     @Query(value = """
@@ -27,4 +29,24 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
         Pageable pageable);
 
     long countByStatut(StatutInvitation statut);
+    Page<Invitation> findByModeCreationOrderByIdDesc(String modeCreation, Pageable pageable);
+
+    // 🎯 Comptages utilisés par le tableau de bord : on exclut les invitations
+    // créées via "Créer" (lettres officielles), qui ne doivent pas être
+    // comptabilisées ni affichées sur le tableau de bord.
+    long countByModeCreation(String modeCreation);
+    long countByStatutAndModeCreation(StatutInvitation statut, String modeCreation);
+
+    // 🎯 Filtrage par mode de création : "CREER" → page Reçu, "ENREGISTRER" → page Envoyer
+    /*Page<Invitation> findByModeCreation(String modeCreation, Pageable pageable);*/
+
+    // 🎯 Invitations "reçues" : celles où la structure de l'utilisateur connecté
+    // figure parmi les structures invitées (table structure_invitee).
+    @Query("""
+        SELECT DISTINCT i FROM Invitation i
+        JOIN i.structuresInvitees si
+        WHERE si.structure.id = :structureId
+        ORDER BY i.id DESC
+        """)
+    List<Invitation> findByStructureInviteeId(@Param("structureId") Long structureId);
 }

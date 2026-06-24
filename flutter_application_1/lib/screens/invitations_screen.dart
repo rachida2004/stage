@@ -8,6 +8,7 @@ import 'package:flutter_application_1/bloc/all_blocs.dart';
 import 'package:flutter_application_1/screens/edit_invitation_screen.dart';
 import '../models/models.dart';
 import '../services/services.dart';
+import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widget/shared_widget.dart';
 import '../core/api_constants.dart';
@@ -29,14 +30,32 @@ class InvitationsScreen extends StatefulWidget {
   State<InvitationsScreen> createState() => _InvitationsScreenState();
 }
 
+enum _InvTab { recues, envoyees }
+
 class _InvitationsScreenState extends State<InvitationsScreen> {
   String _search = '';
   InvitationStatus? _filterStatus;
+  _InvTab _currentTab = _InvTab.recues;
 
   @override
   void initState() {
     super.initState();
-    context.read<InvitationBloc>().add(LoadInvitations());
+    _initialiserOngletSelonRole();
+  }
+
+  Future<void> _initialiserOngletSelonRole() async {
+    final role = await sl<StorageService>().userRole;
+    final isAdmin = role == 'ADMIN';
+    setState(() => _currentTab = isAdmin ? _InvTab.envoyees : _InvTab.recues);
+    _chargerOngletActuel();
+  }
+
+  void _chargerOngletActuel() {
+    if (_currentTab == _InvTab.envoyees) {
+      context.read<InvitationBloc>().add(LoadInvitationsEnvoyees());
+    } else {
+      context.read<InvitationBloc>().add(LoadInvitationsRecues());
+    }
   }
 
   List<Invitation> _applyFilters(List<Invitation> all) {
@@ -56,7 +75,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(state.msg), backgroundColor: AppColors.success),
           );
-          context.read<InvitationBloc>().add(LoadInvitations());
+          _chargerOngletActuel();
         }
         if (state is InvitationError) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +90,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Invitations'),
+            title: Text(_currentTab == _InvTab.envoyees ? 'Invitations envoyées' : 'Invitations reçues'),
             actions: [
               if (loading)
                 const Padding(
@@ -84,48 +103,39 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                 ),
               IconButton(
                 icon: const Icon(Icons.refresh_outlined, size: 20),
-                onPressed: () => context.read<InvitationBloc>().add(LoadInvitations()),
+                onPressed: _chargerOngletActuel,
               ),
             ],
           ),
           
-floatingActionButton: Row(
-  mainAxisAlignment: MainAxisAlignment.end,
-  children: [
-    // Premier bouton : "Enregistrer" (le tien)
-    FloatingActionButton.extended(
+floatingActionButton: _currentTab == _InvTab.envoyees
+  ? FloatingActionButton.extended(
       heroTag: 'fab_enregistrer',
       onPressed: () => _showAddDialog(context),
       backgroundColor: const Color.fromARGB(255, 6, 69, 21),
       foregroundColor: Colors.white,
       icon: const Icon(Icons.add),
       label: const Text("Enregistrer"),
+    )
+  : FloatingActionButton.extended(
+      heroTag: 'fab_creer',
+      onPressed: () {
+        // 🎯 Ouvre le formulaire de lettre d'invitation officielle
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BlocProvider.value(
+              value: context.read<InvitationBloc>(), // Transmet le Bloc pour conserver l'état du formulaire
+              child: const InvitationScreen(), // 👈 Formulaire de création (lettre officielle)
+            ),
+          ),
+        );
+      },
+      backgroundColor: const Color.fromARGB(255, 2, 50, 20),
+      foregroundColor: Colors.white,
+      icon: const Icon(Icons.edit),
+      label: const Text("Creer"),
     ),
-    
-    const SizedBox(width: 10), // Espace entre les deux boutons
-
-    // Second bouton : Un autre bouton avec du texte
-FloatingActionButton.extended(
-  heroTag: 'fab_creer',
-  onPressed: () {
-    // 🎯 Ouvre votre page existante en plein écran
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BlocProvider.value(
-          value: context.read<InvitationBloc>(), // Transmet le Bloc pour conserver l'état du formulaire
-          child: const InvitationScreen(), // 👈 Utilise le nom exact de la classe de votre fichier
-        ),
-      ),
-    );
-  },
-  backgroundColor: const Color.fromARGB(255, 2, 50, 20),
-  foregroundColor: Colors.white,
-  icon: const Icon(Icons.edit),
-  label: const Text("Creer"),
-)
-  ],
-),
           body: Column(
             children: [
               Padding(
@@ -140,17 +150,20 @@ FloatingActionButton.extended(
                     const SizedBox(height: 10),
                     Row(
   children: [
-    // ── BOUTON 1 : ENVOYER ──────────────────────────────────────────
+    // ── BOUTON 1 : ENVOYER (invitations créées par l'administration) ──
     Expanded(
       child: ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color.fromARGB(255, 10, 78, 25),       // Couleur principale (ex: Bleu)
-          foregroundColor: Colors.white,            // Texte et icône en blanc
+          backgroundColor: _currentTab == _InvTab.envoyees
+              ? const Color.fromARGB(255, 10, 78, 25)
+              : const Color.fromARGB(255, 170, 190, 175),
+          foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: () {
-          // 🎯 Sera implémenté après pour envoyer les données à Spring Boot (ex: POST /api/...)
+          setState(() => _currentTab = _InvTab.envoyees);
+          context.read<InvitationBloc>().add(LoadInvitationsEnvoyees());
         },
         icon: const Icon(Icons.send_rounded, size: 18),
         label: const Text('Envoyer', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
@@ -159,17 +172,20 @@ FloatingActionButton.extended(
     
     const SizedBox(width: 12), // Espace d'écartement entre les deux boutons
     
-    // ── BOUTON 2 : RECEVOIR ─────────────────────────────────────────
+    // ── BOUTON 2 : REÇU (invitations reçues par ma structure) ──────────
     Expanded(
       child: ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color.fromARGB(255, 10, 78, 25),        // Couleur de succès (ex: Vert)
-          foregroundColor: Colors.white,            // Texte et icône en blanc
+          backgroundColor: _currentTab == _InvTab.recues
+              ? const Color.fromARGB(255, 10, 78, 25)
+              : const Color.fromARGB(255, 170, 190, 175),
+          foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: () {
-          // 🎯 Sera implémenté après pour récupérer les données depuis Spring Boot (ex: GET /api/...)
+          setState(() => _currentTab = _InvTab.recues);
+          context.read<InvitationBloc>().add(LoadInvitationsRecues());
         },
         icon: const Icon(Icons.download_rounded, size: 18),
         label: const Text('Reçu', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
@@ -187,16 +203,17 @@ FloatingActionButton.extended(
                             selected: _filterStatus == null,
                             onTap: () => setState(() => _filterStatus = null),
                           ),
-                          const SizedBox(width: 6),
-                          ...InvitationStatus.values.map((s) => Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: _FilterChip(
-                                  label: s.label,
-                                  selected: _filterStatus == s,
-                                  onTap: () => setState(() =>
-                                      _filterStatus = _filterStatus == s ? null : s),
-                                ),
-                              )),
+                          // 🎯 Les filtres de statut détaillés ne s'affichent que sur l'onglet "Envoyer"
+                          if (_currentTab == _InvTab.envoyees)
+                            ...InvitationStatus.values.map((s) => Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: _FilterChip(
+                                    label: s.label,
+                                    selected: _filterStatus == s,
+                                    onTap: () => setState(() =>
+                                        _filterStatus = _filterStatus == s ? null : s),
+                                  ),
+                                )),
                         ],
                       ),
                     ),
@@ -213,8 +230,7 @@ FloatingActionButton.extended(
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: () async =>
-                            context.read<InvitationBloc>().add(LoadInvitations()),
+                        onRefresh: () async => _chargerOngletActuel(),
                         child: ListView.separated(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           itemCount: filtered.length,
@@ -338,8 +354,12 @@ class _InvitationCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    StatusBadge.fromInvStatus(inv.status),
-                    const SizedBox(width: 8),
+                    // 🎯 Le statut (En attente/Planifiée/En cours/...) ne s'applique
+                    // pas aux lettres officielles créées via "Créer".
+                    if (inv.modeCreation != 'CREER') ...[
+                      StatusBadge.fromInvStatus(inv.status),
+                      const SizedBox(width: 8),
+                    ],
                     if (inv.nombreParticipants > 0)
                       Text(
                         '${inv.nombreParticipants} participant(s)',
@@ -367,8 +387,8 @@ class _AddInvitationSheet extends StatefulWidget {
 }
 
 class _AddInvitationSheetState extends State<_AddInvitationSheet> {
+  final _structureEmettriceCtrl = TextEditingController();
   final _objetCtrl  = TextEditingController();
-  final _structCtrl = TextEditingController();
   final _lieuCtrl   = TextEditingController();
   final _nbCtrl     = TextEditingController();
   DateTime? _dateDebut;
@@ -378,8 +398,8 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
 
   @override
   void dispose() {
+    _structureEmettriceCtrl.dispose();
     _objetCtrl.dispose();
-    _structCtrl.dispose();
     _lieuCtrl.dispose();
     _nbCtrl.dispose();
     super.dispose();
@@ -440,7 +460,6 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
 
   void _submit() {
     if (_objetCtrl.text.trim().isEmpty ||
-        _structCtrl.text.trim().isEmpty || // Vérifie que la structure est saisie
         _dateDebut == null ||
         _dateFin == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -456,14 +475,15 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
 
     context.read<InvitationBloc>().add(CreateInvitation(
       {
+        'structureEmettrice': _structureEmettriceCtrl.text.trim(),
         'objet': _objetCtrl.text.trim(),
-        'nomStructure': _structCtrl.text.trim(), // 👈 MODIFIÉ : "nomStructure" au lieu de "structureEmettrice"
         'lieu': _lieuCtrl.text.trim(),           // 👈 MODIFIÉ : Envoi explicite du lieu
         'dateDebut':
             '${_dateDebut!.year}-${_dateDebut!.month.toString().padLeft(2, '0')}-${_dateDebut!.day.toString().padLeft(2, '0')}',
         'dateFin':
             '${_dateFin!.year}-${_dateFin!.month.toString().padLeft(2, '0')}-${_dateFin!.day.toString().padLeft(2, '0')}',
         'nombreParticipants': int.tryParse(_nbCtrl.text.trim()) ?? 0, // 👈 MODIFIÉ : Suppression du 'if', envoi systématique
+        'modeCreation': 'ENREGISTRER',
       },
       filePaths: const [],
       fileBytes: fileBytes,
@@ -507,13 +527,16 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _objetCtrl,
-                  decoration: const InputDecoration(labelText: "Objet de l'invitation *"),
+                  controller: _structureEmettriceCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "Structure émettrice *",
+                    hintText: "Ex: DIRECTION DES SYSTÈMES D'INFORMATION",
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
-                  controller: _structCtrl,
-                  decoration: const InputDecoration(labelText: 'Structure émettrice *'),
+                  controller: _objetCtrl,
+                  decoration: const InputDecoration(labelText: "Objet de l'invitation *"),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -662,6 +685,52 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
+  Widget _badgeStatutReponse(String statut) {
+    Color couleur;
+    String libelle;
+    switch (statut) {
+      case 'ACCEPTEE':
+        couleur = const Color(0xFF16A34A);
+        libelle = 'Acceptée';
+        break;
+      case 'REFUSEE':
+        couleur = const Color(0xFFDC2626);
+        libelle = 'Refusée';
+        break;
+      case 'EXCUSEE':
+        couleur = const Color(0xFFD97706);
+        libelle = 'Excusée';
+        break;
+      default:
+        couleur = const Color(0xFF64748B);
+        libelle = 'En attente';
+    }
+    return Container(
+      margin: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: couleur.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(libelle, style: TextStyle(fontSize: 11, color: couleur, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  void _showAjouterStructureDialog(BuildContext context, Invitation inv) {
+    final InvitationBloc invBloc = BlocProvider.of<InvitationBloc>(context);
+    final invId = inv.id;
+    final dejaLiees = inv.structuresInvitees.map((s) => s.id).toSet();
+    showDialog(
+      context: context,
+      builder: (dialogContext) => _AjouterStructureDialog(
+        invId: invId,
+        dejaLiees: dejaLiees,
+        onAjouter: (structureId) =>
+            invBloc.add(AjouterStructureInvitee(invId: invId, structureId: structureId)),
+      ),
+    );
+  }
+
  void _openFile(BuildContext context, String fileUrlOrName) async {
   String targetUrl = fileUrlOrName;
 
@@ -691,7 +760,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   );
 }
   // ─── 2. EXPORT ET TÉLÉCHARGEMENT DU DOCUMENT PDF ────────────────────────────
- /* Future<void> _exportPdf(BuildContext context) async {
+  Future<void> _exportPdf(BuildContext context) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Export PDF en cours…'),
@@ -740,7 +809,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
         SnackBar(content: Text('Échec de l\'export Word : $e'), backgroundColor: Colors.red),
       );
     }
-  }*/
+  }
 
   void _showAffectationModal(BuildContext context) async {
     setState(() {
@@ -786,6 +855,10 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 🎯 Une invitation créée via "Créer" (lettre officielle) n'a pas besoin
+    // d'affectation d'agents ; seules celles créées via "Enregistrer" en ont besoin.
+    final bool estUneLettreCreee = widget.inv.modeCreation == 'CREER';
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color.fromARGB(255, 3, 75, 33),
@@ -796,14 +869,15 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
         ),
         actions: [
-          TextButton.icon(
-            onPressed: () => _showAffectationModal(context),
-            icon: const Icon(Icons.person_add_outlined, size: 20, color: Colors.white),
-            label: const Text(
-              'Affecter',
-              style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+          if (!estUneLettreCreee)
+            TextButton.icon(
+              onPressed: () => _showAffectationModal(context),
+              icon: const Icon(Icons.person_add_outlined, size: 20, color: Colors.white),
+              label: const Text(
+                'Affecter',
+                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+              ),
             ),
-          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -814,6 +888,9 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
           if (state is InvDetailLoaded) {
             invitationAffichee = state.inv;
           }
+
+          final bool afficherExport = invitationAffichee.modeCreation == 'CREER';
+          final bool afficherAffectation = !afficherExport;
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -834,7 +911,41 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black87),
                     ),
                     const SizedBox(height: 8),
-                    StatusBadge.fromInvStatus(invitationAffichee.status),
+                    // 🎯 Le statut ne s'applique pas aux lettres officielles créées via "Créer".
+                    if (!afficherExport) StatusBadge.fromInvStatus(invitationAffichee.status),
+                    // 🎯 Export PDF/Word réservé aux invitations créées via "Créer"
+                    if (afficherExport) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _exportPdf(context),
+                              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                              label: const Text('Exporter PDF'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color.fromARGB(255, 5, 65, 30),
+                                side: const BorderSide(color: Color.fromARGB(255, 5, 65, 30), width: 0.8),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _exportWord(context),
+                              icon: const Icon(Icons.description_outlined, size: 18),
+                              label: const Text('Exporter Word'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color.fromARGB(255, 3, 66, 35),
+                                side: const BorderSide(color: Color.fromARGB(255, 3, 66, 35), width: 0.8),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     const Divider(color: Color(0xFFE2E8F0), height: 1),
                     _DetailRow(
@@ -871,6 +982,99 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
               ),
 
               const SizedBox(height: 12),
+
+              // ── Structures destinataires (CRUD structure_invitee) ───────────
+              // 🎯 Réservé aux invitations créées via "Créer" (lettre officielle) ;
+              // pas pertinent pour les invitations "Enregistrer" (page Envoyer).
+              if (afficherExport) ...[
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Structures destinataires',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _showAjouterStructureDialog(context, invitationAffichee),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Ajouter'),
+                            style: TextButton.styleFrom(foregroundColor: const Color.fromARGB(255, 5, 77, 35)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      if (invitationAffichee.structuresInvitees.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            'Aucune structure destinataire pour cette invitation',
+                            style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                          ),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: invitationAffichee.structuresInvitees.length,
+                          itemBuilder: (context, index) {
+                            final si = invitationAffichee.structuresInvitees[index];
+                            return Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.account_balance_outlined, size: 18, color: Color.fromARGB(255, 5, 77, 35)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(si.nom, style: const TextStyle(fontSize: 13)),
+                                  ),
+                                  _badgeStatutReponse(si.statutReponse),
+                                  PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert, size: 18),
+                                    onSelected: (action) {
+                                      if (si.structureInviteeId == null) return;
+                                      if (action == 'RETIRER') {
+                                        context.read<InvitationBloc>().add(
+                                            SupprimerStructureInvitee(structureInviteeId: si.structureInviteeId!));
+                                      } else {
+                                        context.read<InvitationBloc>().add(ModifierStatutStructureInvitee(
+                                            structureInviteeId: si.structureInviteeId!, statutReponse: action));
+                                      }
+                                    },
+                                    itemBuilder: (context) => const [
+                                      PopupMenuItem(value: 'EN_ATTENTE', child: Text('Marquer en attente')),
+                                      PopupMenuItem(value: 'ACCEPTEE', child: Text('Marquer acceptée')),
+                                      PopupMenuItem(value: 'REFUSEE', child: Text('Marquer refusée')),
+                                      PopupMenuItem(value: 'EXCUSEE', child: Text('Marquer excusée')),
+                                      PopupMenuDivider(),
+                                      PopupMenuItem(value: 'RETIRER', child: Text('Retirer', style: TextStyle(color: Colors.red))),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // ── Pièces jointes ────────────────────────────────────────────
               Container(
@@ -946,59 +1150,60 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
 
               const SizedBox(height: 12),
 
-              // ── Agents affectés ───────────────────────────────────────────
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Agents affectés',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 10),
-                    if (invitationAffichee.agentsAffectes.isEmpty)
+              // ── Agents affectés (uniquement pour les invitations "Enregistrer") ──
+              if (afficherAffectation)
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       const Text(
-                        'Aucun agent affecté',
-                        style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                      )
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: invitationAffichee.agentsAffectes.length,
-                        itemBuilder: (context, index) {
-                          final agent = invitationAffichee.agentsAffectes[index];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  backgroundColor: const Color(0xFFE6F1FB),
-                                  radius: 16,
-                                  child: Text(
-                                    agent.nom.substring(0, 1).toUpperCase(),
-                                    style: const TextStyle(color: Color(0xFF2ECC71), fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  '${agent.nom} ${agent.prenom ?? ''}'.trim(),
-                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                        'Agents affectés',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
                       ),
-                  ],
+                      const SizedBox(height: 10),
+                      if (invitationAffichee.agentsAffectes.isEmpty)
+                        const Text(
+                          'Aucun agent affecté',
+                          style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: invitationAffichee.agentsAffectes.length,
+                          itemBuilder: (context, index) {
+                            final agent = invitationAffichee.agentsAffectes[index];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: const Color(0xFFE6F1FB),
+                                    radius: 16,
+                                    child: Text(
+                                      agent.nom.substring(0, 1).toUpperCase(),
+                                      style: const TextStyle(color: Color(0xFF2ECC71), fontSize: 12, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    '${agent.nom} ${agent.prenom ?? ''}'.trim(),
+                                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
                 ),
-              ),
 
               const SizedBox(height: 20),
 // ─── ACTIONS : MODIFIER ET SUPPRIMER ─────────────────────────────────────────
@@ -1305,6 +1510,83 @@ class WidgetAgentsList extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _AjouterStructureDialog extends StatefulWidget {
+  final String invId;
+  final Set<int?> dejaLiees;
+  final void Function(int structureId) onAjouter;
+
+  const _AjouterStructureDialog({
+    required this.invId,
+    required this.dejaLiees,
+    required this.onAjouter,
+  });
+
+  @override
+  State<_AjouterStructureDialog> createState() => _AjouterStructureDialogState();
+}
+
+class _AjouterStructureDialogState extends State<_AjouterStructureDialog> {
+  List<Structure> _structures = [];
+  bool _loading = true;
+  Structure? _selectionnee;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    try {
+      final liste = await sl<AdminService>().getStructures();
+      if (!mounted) return;
+      setState(() {
+        _structures = liste.where((s) => s.id != null && !widget.dejaLiees.contains(s.id)).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ajouter une structure destinataire'),
+      content: SizedBox(
+        width: 360,
+        child: _loading
+            ? const SizedBox(height: 80, child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+            : _structures.isEmpty
+                ? const Text('Toutes les structures disponibles sont déjà destinataires de cette invitation.')
+                : DropdownButtonFormField<Structure>(
+                    value: _selectionnee,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Structure'),
+                    items: _structures
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                    onChanged: (s) => setState(() => _selectionnee = s),
+                  ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+        ElevatedButton(
+          onPressed: _selectionnee == null
+              ? null
+              : () {
+                  widget.onAjouter(_selectionnee!.id!);
+                  Navigator.pop(context);
+                },
+          style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 6, 69, 21), foregroundColor: Colors.white),
+          child: const Text('Ajouter'),
+        ),
+      ],
     );
   }
 }

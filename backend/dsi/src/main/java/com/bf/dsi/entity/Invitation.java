@@ -38,8 +38,35 @@ public class Invitation {
     @Builder.Default
     private String visibilite = "PUBLIC";
 
+    // 🎯 Détermine sur quelle page (Reçu / Envoyer) l'invitation doit s'afficher :
+    // "CREER"      -> formulaire "Créer" (lettre officielle)      -> page "Reçu"
+    // "ENREGISTRER" -> formulaire rapide "Enregistrer"             -> page "Envoyer"
+    @Column(name = "mode_creation")
+    @Builder.Default
+    private String modeCreation = "ENREGISTRER";
+
     @Column(name = "date_creation")
     private LocalDateTime dateCreation;
+
+    // ── Champs spécifiques à la lettre officielle (format ministère) ──────
+    @Column(name = "numero_reference")
+    private String numeroReference;
+
+    @Column(name = "ville")
+    @Builder.Default
+    private String ville = "Ouagadougou";
+
+    @Column(name = "contenu", columnDefinition = "TEXT")
+    private String contenu;
+
+    @Column(name = "ampliation")
+    private String ampliation;
+
+    @Column(name = "signataire_nom")
+    private String signataireNom;
+
+    @Column(name = "signataire_qualite")
+    private String signataireQualite;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "structure_emettrice")

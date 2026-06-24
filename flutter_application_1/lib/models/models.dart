@@ -27,12 +27,25 @@ class Structure {
       'email': email,
     };
   }
+
+  // ════════════════════════════════════════════════════════════════════
+  // 🎯 Surcharges indispensables pour le DropdownButton
+  // ════════════════════════════════════════════════════════════════════
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Structure && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }
+
 class Service {
   final int? id;
   final String nom;
   final String? description;
-  final Structure? structure; // Objet complet ou ID selon votre implémentation
+  final Structure? structure; 
 
   Service({this.id, required this.nom, this.description, this.structure});
 
@@ -44,6 +57,16 @@ class Service {
       structure: json['structure'] != null ? Structure.fromJson(json['structure']) : null,
     );
   }
+
+  // 🎯 Il est recommandé de le faire aussi pour Service si vous utilisez un menu déroulant de Services
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is Service && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }
 /// ════════════════════════════════════════════════════════════════════
 // INVITATION MODELE
@@ -84,10 +107,32 @@ extension InvitationStatusExt on InvitationStatus {
   }
 }
 
+class StructureInviteeRef {
+  final int id;
+  final int? structureInviteeId;
+  final String nom;
+  final String statutReponse;
+
+  StructureInviteeRef({
+    required this.id,
+    this.structureInviteeId,
+    required this.nom,
+    this.statutReponse = 'EN_ATTENTE',
+  });
+
+  factory StructureInviteeRef.fromJson(Map<String, dynamic> j) => StructureInviteeRef(
+    id: j['id'] != null ? (j['id'] as num).toInt() : 0,
+    structureInviteeId: j['structureInviteeId'] != null ? (j['structureInviteeId'] as num).toInt() : null,
+    nom: j['nom'] ?? '',
+    statutReponse: j['statutReponse']?.toString() ?? 'EN_ATTENTE',
+  );
+}
+
 class Invitation {
   final String id;
   final String objet;
   final String structureEmettrice;
+  final int? structureEmettriceId;
   final DateTime dateDebut;
   final DateTime dateFin;
   final int nombreParticipants;
@@ -95,12 +140,23 @@ class Invitation {
   final String? description;
   final InvitationStatus status;
   final List<AppUser> agentsAffectes;
-  final List<String> files; 
+  final List<String> files;
+
+  // ── Champs de la lettre officielle ─────────────────────────────────
+  final String? numeroReference;
+  final String? ville;
+  final String? contenu;
+  final String? ampliation;
+  final String? signataireNom;
+  final String? signataireQualite;
+  final String? modeCreation;
+  final List<StructureInviteeRef> structuresInvitees;
 
   Invitation({
     required this.id,
     required this.objet,
     required this.structureEmettrice,
+    this.structureEmettriceId,
     required this.dateDebut,
     required this.dateFin,
     this.nombreParticipants = 0,
@@ -109,6 +165,14 @@ class Invitation {
     required this.status,
     this.agentsAffectes = const [],
     this.files = const [],
+    this.numeroReference,
+    this.ville,
+    this.contenu,
+    this.ampliation,
+    this.signataireNom,
+    this.signataireQualite,
+    this.modeCreation,
+    this.structuresInvitees = const [],
   });
 
   factory Invitation.fromJson(Map<String, dynamic> j) => Invitation(
@@ -117,6 +181,7 @@ class Invitation {
     
     // ✅ CORRECTION : Lecture prioritaire de 'nomStructure' envoyée par le formulaire
     structureEmettrice:   j['nomStructure'] ?? j['structureEmettrice'] ?? 'Non spécifiée',
+    structureEmettriceId: j['structureEmettriceId'] != null ? (j['structureEmettriceId'] as num).toInt() : null,
     
     dateDebut:            j['dateDebut'] != null ? (DateTime.tryParse(j['dateDebut'].toString()) ?? DateTime.now()) : DateTime.now(),
     dateFin:              j['dateFin'] != null ? (DateTime.tryParse(j['dateFin'].toString()) ?? DateTime.now()) : DateTime.now(),
@@ -138,11 +203,21 @@ class Invitation {
         })
         .where((url) => url.isNotEmpty)
         .toList(),
+    numeroReference:    j['numeroReference'],
+    ville:              j['ville'],
+    contenu:            j['contenu'],
+    ampliation:         j['ampliation'],
+    signataireNom:      j['signataireNom'],
+    signataireQualite:  j['signataireQualite'],
+    modeCreation:       j['modeCreation'],
+    structuresInvitees: (j['structuresInvitees'] as List<dynamic>? ?? [])
+        .map((e) => StructureInviteeRef.fromJson(e)).toList(),
   );
 
   Map<String, dynamic> toJson() => {
     'objet': objet,
     'structureEmettrice': structureEmettrice,
+    if (structureEmettriceId != null) 'structureEmettriceId': structureEmettriceId,
     'dateDebut': '${dateDebut.year}-${dateDebut.month.toString().padLeft(2,'0')}-${dateDebut.day.toString().padLeft(2,'0')}',
     'dateFin':   '${dateFin.year}-${dateFin.month.toString().padLeft(2,'0')}-${dateFin.day.toString().padLeft(2,'0')}',
     'nombreParticipants': nombreParticipants,
@@ -150,6 +225,14 @@ class Invitation {
     if (description != null) 'description': description,
     'status': status.apiValue,
     'files': files,
+    if (numeroReference != null) 'numeroReference': numeroReference,
+    if (ville != null) 'ville': ville,
+    if (contenu != null) 'contenu': contenu,
+    if (ampliation != null) 'ampliation': ampliation,
+    if (signataireNom != null) 'signataireNom': signataireNom,
+    if (signataireQualite != null) 'signataireQualite': signataireQualite,
+    if (modeCreation != null) 'modeCreation': modeCreation,
+    'structureIds': structuresInvitees.map((s) => s.id).toList(),
   };
 }
 
