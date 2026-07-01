@@ -64,19 +64,50 @@ public class SecurityConfig {
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/agents").permitAll()
                 
                 // Admin uniquement
+                // 🎯 La LECTURE des paramètres (ex: langue de l'interface) doit être
+                // accessible à tout utilisateur connecté — c'est appelé au tout
+                // lancement de l'app, avant même la connexion d'un Admin éventuel.
+                // Seule l'ÉCRITURE reste réservée à l'ADMIN.
+                .requestMatchers(HttpMethod.GET, "/api/admin/settings").authenticated()
                 .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
+
+                // Rôles — gestion réservée aux ADMIN (sensible : pilote les droits d'accès)
+                .requestMatchers("/api/roles/**").hasAuthority("ADMIN")
                 
+                // 🎯 Affecter un agent à une INVITATION : ADMIN, ou tout rôle ayant
+                // explicitement la permission AFFECTER_AGENT (cochée depuis
+                // Admin → Rôles → permissions — aucune modif de code nécessaire).
+                // (placé AVANT la règle générale /api/invitations/** ci-dessous :
+                // Spring Security retient le premier matcher qui correspond)
+                .requestMatchers("/api/invitations/*/affecter").hasAnyAuthority("ADMIN","SECRETAIRE", "AFFECTER_AGENT")
+
                 // Liste des agents — accessible à tous les authentifiés (pour le modal d'affectation)
                 .requestMatchers("/api/agents/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR")
                 
-                // Tickets — USAGER peut créer (POST) et voir les siens (GET)
-                .requestMatchers("/api/tickets/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
+                // 🎯 Un USAGER crée un ticket et le consulte, mais ne gère pas son
+                // cycle de vie (changer le statut, affecter un agent, supprimer) —
+                // c'est l'agent affecté ou un superviseur/admin qui s'en charge.
+                // (Contrairement aux invitations, l'affectation sur un ticket reste
+                // ouverte à AGENT_DSI/SUPERVISEUR, comme c'était déjà le cas dans l'UI.)
+                .requestMatchers(HttpMethod.PUT, "/api/tickets/*/statut").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR")
+                .requestMatchers(HttpMethod.POST, "/api/tickets/*/affecter/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR","SECRETAIRE", "AFFECTER_AGENT")
+                .requestMatchers(HttpMethod.DELETE, "/api/tickets/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR")
+
+                // Tickets — USAGER peut créer (POST) et voir les siens (GET) ; +
+                // GERER_TICKETS pour tout rôle personnalisé à qui on a coché cette permission.
+                .requestMatchers("/api/tickets/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER", "GERER_TICKETS")
                 
-                // Invitations — lecture pour tous, écriture filtrée côté service si besoin
-                .requestMatchers("/api/invitations/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
+                // 🎯 Création d'invitation (POST) : réservée à ADMIN, SUPERVISEUR,
+                // SECRETAIRE et tout rôle ayant la permission GERER_INVITATIONS.
+                // Un AGENT_DSI ne crée pas d'invitation — il gère ses affectations.
+                .requestMatchers(HttpMethod.POST, "/api/invitations/**").hasAnyAuthority("ADMIN", "SUPERVISEUR", "SECRETAIRE", "GERER_INVITATIONS")
+
+                // Invitations — lecture pour tous, écriture filtrée côté service si besoin ;
+                // + GERER_INVITATIONS pour tout rôle personnalisé à qui on a coché cette permission.
+                .requestMatchers("/api/invitations/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER", "SECRETAIRE", "GERER_INVITATIONS")
                 
                 // Notifications — accessibles à tous les authentifiés
-                .requestMatchers("/api/notifications/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER")
+                .requestMatchers("/api/notifications/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR", "USAGER", "SECRETAIRE", "GERER_INVITATIONS", "GERER_TICKETS")
                 .requestMatchers(HttpMethod.GET, "/api/services").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/services/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/structures").permitAll()

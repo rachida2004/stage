@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; 
+import 'package:flutter_quill/flutter_quill.dart'; // <-- Ne pas oublier l'import
 import 'theme/app_theme.dart';
 import 'screens/login_screen.dart';
 import 'services/services.dart';
@@ -58,6 +59,7 @@ class DSIApp extends StatelessWidget {
               GlobalMaterialLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
+              FlutterQuillLocalizations.delegate, // <-- AJOUTÉ ICI pour l'éditeur Word
             ],
             
             home: const _AppRouter(),

@@ -8,6 +8,7 @@ import com.bf.dsi.services.FileStorageService;
 import com.bf.dsi.services.InvitationService;
 import com.bf.dsi.services.PdfService;
 import com.bf.dsi.services.WordService;
+import com.bf.dsi.services.AppSettingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,8 @@ public class InvitationController {
     private final WordService wordService;
     private final InvitationService invitationService;
     private final UtilisateurRepository utilisateurRepo;
+    private final NotificationRepository notificationRepo;
+    private final AppSettingService appSettingService;
 
     @lombok.Data
     public static class AffectationRequest {
@@ -116,6 +119,7 @@ public class InvitationController {
         Invitation saved = invitationRepo.save(inv);
         appliquerStructuresInvitees(saved, req.getStructureIds());
 
+        notifierInvitationEnregistree(saved);
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
@@ -198,6 +202,7 @@ public class InvitationController {
             }
             invitationRepo.save(saved);
         }
+        notifierInvitationEnregistree(saved);
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
@@ -236,6 +241,33 @@ public class InvitationController {
             }
 
             return ResponseEntity.ok(toDto(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // 🎯 Ajoute une ou plusieurs pièces jointes à une invitation déjà existante
+    // (utilisé par l'écran "Modifier l'invitation") — vient compléter les pièces
+    // jointes déjà présentes, qu'il y en ait zéro ou plusieurs.
+    @PostMapping("/{id}/attachments")
+    public ResponseEntity<?> ajouterPiecesJointes(
+            @PathVariable Long id,
+            @RequestParam(required = false) List<MultipartFile> files) {
+        return invitationRepo.findById(id).map(inv -> {
+            if (files != null) {
+                for (MultipartFile file : files) {
+                    if (!file.isEmpty()) {
+                        String path = fileStorage.store(file, "invitations/" + inv.getId());
+                        PieceJointeInvitation pj = PieceJointeInvitation.builder()
+                            .nom(file.getOriginalFilename())
+                            .type(file.getContentType())
+                            .chemin(path)
+                            .invitation(inv)
+                            .build();
+                        inv.getPiecesJointes().add(pj);
+                    }
+                }
+                invitationRepo.save(inv);
+            }
+            return ResponseEntity.ok(toDto(inv));
         }).orElse(ResponseEntity.notFound().build());
     }
 
@@ -326,7 +358,17 @@ public class InvitationController {
         StructureInvitee si = structureInviteeRepo.findById(structureInviteeId).orElseThrow();
         Long invId = si.getInvitation().getId();
         structureInviteeRepo.deleteById(structureInviteeId);
-        return ResponseEntity.ok(toDto(invitationRepo.findById(invId).orElseThrow()));
+
+        // 🎯 Le DELETE s'exécute bien en base, MAIS l'entité Invitation déjà
+        // chargée dans la session JPA garde en mémoire son ancienne collection
+        // structuresInvitees (chargée avant la suppression). Sans ce retrait
+        // manuel, le JSON renvoyé au frontend montrait encore la structure
+        // "retirée" malgré une suppression réussie en base — exactement le
+        // symptôme observé ("Retirer ne marche pas").
+        Invitation inv = invitationRepo.findById(invId).orElseThrow();
+        inv.getStructuresInvitees().removeIf(s -> s.getId().equals(structureInviteeId));
+
+        return ResponseEntity.ok(toDto(inv));
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -367,6 +409,21 @@ public class InvitationController {
                 structureInviteeRepo.save(si);
             });
         }
+    }
+
+    /** Notifie les ADMIN et AGENT_DSI quand une invitation est enregistrée (mode rapide ENREGISTRER). */
+    private void notifierInvitationEnregistree(Invitation inv) {
+        if (!"ENREGISTRER".equalsIgnoreCase(inv.getModeCreation())) return;
+        if (!appSettingService.isInternalNotificationEnabled()) return;
+
+        Map<Long, Utilisateur> destinataires = new LinkedHashMap<>();
+        utilisateurRepo.findByRoles_Nom("ADMIN").forEach(u -> destinataires.put(u.getUserId(), u));
+        utilisateurRepo.findByRoles_Nom("AGENT_DSI").forEach(u -> destinataires.put(u.getUserId(), u));
+
+        destinataires.values().forEach(u -> notificationRepo.save(Notification.builder()
+            .message("Nouvelle invitation enregistrée : " + inv.getObjet())
+            .categorie("INVITATION").actionLabel("Voir").resourceId(inv.getId().toString())
+            .utilisateur(u).build()));
     }
 
     private Map<String, Object> toDto(Invitation i) {

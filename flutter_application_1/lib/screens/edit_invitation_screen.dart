@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_application_1/bloc/all_blocs.dart';
 import 'package:flutter_application_1/models/models.dart';
+import 'package:file_picker/file_picker.dart';
+import '../services/services.dart';
+import '../core/api_constants.dart';
+import '../theme/app_theme.dart';
+import '../widget/shared_widget.dart';
+import 'invitations_screen.dart' show ouvrirPieceJointe;
+import 'pdf_viewer_page.dart';
 
 class EditInvitationPage extends StatefulWidget {
   final Invitation inv;
@@ -20,6 +27,11 @@ class _EditInvitationPageState extends State<EditInvitationPage> {
   late DateTime _dateDebut;
   late DateTime _dateFin;
 
+  // 🎯 Pièces jointes : celles déjà existantes (lecture) + celles à envoyer
+  late List<String> _fichiersExistants;
+  final List<PlatformFile> _nouveauxFichiers = [];
+  bool _envoiEnCours = false;
+
   @override
   void initState() {
     super.initState();
@@ -29,6 +41,7 @@ class _EditInvitationPageState extends State<EditInvitationPage> {
     _nbCtrl = TextEditingController(text: widget.inv.nombreParticipants.toString());
     _dateDebut = widget.inv.dateDebut;
     _dateFin = widget.inv.dateFin;
+    _fichiersExistants = List<String>.from(widget.inv.files);
   }
 
   @override
@@ -59,7 +72,62 @@ class _EditInvitationPageState extends State<EditInvitationPage> {
     }
   }
 
-  void _submit() {
+  Future<void> _pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'],
+        withData: true,
+      );
+      if (result != null) {
+        setState(() => _nouveauxFichiers.addAll(result.files));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de la sélection des fichiers: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _removeNouveauFichier(int index) {
+    setState(() => _nouveauxFichiers.removeAt(index));
+  }
+
+  // 🎯 Le `chemin` brut renvoyé par le backend pour une pièce jointe (ex:
+  // "/invitations/34/xxx.pdf") n'est pas une URL servable directement — il
+  // faut le faire passer par la route de téléchargement /api/files/download/.
+  // C'est l'oubli de ce préfixe qui causait l'erreur 400 à l'ouverture.
+  String _urlTelechargement(String chemin) {
+    if (chemin.startsWith('http')) return chemin;
+    final chemainSansSlash = chemin.startsWith('/') ? chemin.substring(1) : chemin;
+    return '${ApiConstants.baseUrl}/api/files/download/$chemainSansSlash';
+  }
+
+  // 🎯 Comme sur l'écran de détail : aperçu in-app (iframe) pour les PDF et
+  // images, ouverture/téléchargement externe pour les formats qu'aucun
+  // navigateur ne sait afficher nativement (docx, doc, xlsx...).
+  void _ouvrirAvecApercu(String chemin) {
+    final url = _urlTelechargement(chemin);
+    final ext = url.split('.').last.toLowerCase().split('?').first;
+    const previsualisable = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+    if (!previsualisable.contains(ext)) {
+      ouvrirPieceJointe(url);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfViewerPage(pdfUrl: url, title: url.split('/').last),
+      ),
+    );
+  }
+
+  void _submit() async {
     // 1. Validation de base
     if (_objetCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -73,6 +141,31 @@ class _EditInvitationPageState extends State<EditInvitationPage> {
         const SnackBar(content: Text("La structure émettrice est obligatoire"), backgroundColor: Colors.orange),
       );
       return;
+    }
+
+    // 🎯 Envoi des nouvelles pièces jointes en premier (s'il y en a), qu'il y
+    // ait déjà des fichiers existants ou pas du tout au départ.
+    if (_nouveauxFichiers.isNotEmpty) {
+      setState(() => _envoiEnCours = true);
+      try {
+        final invMaj = await sl<InvitationService>().ajouterPiecesJointes(
+          widget.inv.id,
+          _nouveauxFichiers.map((f) => MapEntry(f.name, f.bytes!)).toList(),
+        );
+        setState(() {
+          _fichiersExistants = List<String>.from(invMaj.files);
+          _nouveauxFichiers.clear();
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Erreur lors de l'envoi des pièces jointes : $e"), backgroundColor: Colors.red),
+          );
+        }
+        setState(() => _envoiEnCours = false);
+        return;
+      }
+      setState(() => _envoiEnCours = false);
     }
 
     // 2. Préparation des données strictement alignées avec le DTO Spring Boot
@@ -114,9 +207,7 @@ class _EditInvitationPageState extends State<EditInvitationPage> {
             );
             Navigator.pop(context, true); // true = signal de rafraichissement pour la page parente
           } else if (state is InvitationError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.msg), backgroundColor: Colors.red),
-            );
+            showErrorSnack(context, state.msg);
           }
         },
         child: ListView(
@@ -166,13 +257,63 @@ TextFormField(
   style: const TextStyle(color: Colors.black87),
 ),
             
+            const SizedBox(height: 24),
+
+            // ── Pièces jointes ──────────────────────────────────────
+            const Text('Pièces jointes', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const SizedBox(height: 8),
+
+            // Fichiers déjà présents sur l'invitation
+            if (_fichiersExistants.isEmpty && _nouveauxFichiers.isEmpty)
+              const Text('Aucune pièce jointe pour le moment.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+
+            ..._fichiersExistants.map((url) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: InkWell(
+                onTap: () => _ouvrirAvecApercu(url),
+                child: Row(children: [
+                  const Icon(Icons.attach_file, size: 18, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(url.split('/').last,
+                      style: const TextStyle(color: AppColors.primary, decoration: TextDecoration.underline, fontSize: 13),
+                      maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  const Icon(Icons.open_in_new, size: 14, color: AppColors.primary),
+                ]),
+              ),
+            )),
+
+            // Fichiers en attente d'envoi (pas encore uploadés)
+            ..._nouveauxFichiers.asMap().entries.map((entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                const Icon(Icons.insert_drive_file_outlined, size: 18, color: Colors.orange),
+                const SizedBox(width: 8),
+                Expanded(child: Text(entry.value.name,
+                    style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                const Text('en attente', style: TextStyle(fontSize: 11, color: Colors.orange)),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  onPressed: () => _removeNouveauFichier(entry.key),
+                ),
+              ]),
+            )),
+
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _envoiEnCours ? null : _pickFiles,
+              icon: const Icon(Icons.attach_file),
+              label: const Text('Joindre un fichier'),
+            ),
+
             const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: _submit,
+              onPressed: _envoiEnCours ? null : _submit,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: const Text('Enregistrer les modifications'),
+              child: _envoiEnCours
+                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Enregistrer les modifications'),
             ),
           ],
         ),

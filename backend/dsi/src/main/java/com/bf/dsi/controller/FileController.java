@@ -33,10 +33,25 @@ public class FileController {
 
             // Détermination du Content-Type
             MediaType contentType = MediaType.APPLICATION_OCTET_STREAM;
-            if (filename.toLowerCase().endsWith(".pdf")) {
+            String lower = filename.toLowerCase();
+            if (lower.endsWith(".pdf")) {
                 contentType = MediaType.APPLICATION_PDF;
-            } else if (filename.toLowerCase().endsWith(".docx")) {
+            } else if (lower.endsWith(".docx")) {
                 contentType = MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            } else if (lower.endsWith(".doc")) {
+                contentType = MediaType.parseMediaType("application/msword");
+            } else if (lower.endsWith(".xlsx")) {
+                contentType = MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            } else if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+                contentType = MediaType.IMAGE_JPEG;
+            } else if (lower.endsWith(".png")) {
+                contentType = MediaType.IMAGE_PNG;
+            } else if (lower.endsWith(".gif")) {
+                contentType = MediaType.IMAGE_GIF;
+            } else if (lower.endsWith(".webp")) {
+                contentType = MediaType.parseMediaType("image/webp");
+            } else if (lower.endsWith(".bmp")) {
+                contentType = MediaType.parseMediaType("image/bmp");
             }
 
             return ResponseEntity.ok()

@@ -41,6 +41,44 @@ class Structure {
   int get hashCode => id.hashCode;
 }
 
+// ════════════════════════════════════════════════════════════════════
+// 🎯 RÔLE — CRUD admin (table `role`)
+// ════════════════════════════════════════════════════════════════════
+class AppRole {
+  final int? id;
+  final String nom;
+  final String? description;
+  final List<String> permissions;
+
+  AppRole({this.id, required this.nom, this.description, this.permissions = const []});
+
+  factory AppRole.fromJson(Map<String, dynamic> json) {
+    return AppRole(
+      id: json['id'] != null ? (json['id'] as num).toInt() : null,
+      nom: json['nom'] ?? '',
+      description: json['description'],
+      permissions: (json['permissions'] as List<dynamic>? ?? []).map((p) => p.toString()).toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'nom': nom,
+      'description': description,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is AppRole && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
+}
+
 class Service {
   final int? id;
   final String nom;
@@ -68,7 +106,8 @@ class Service {
   @override
   int get hashCode => id.hashCode;
 }
-/// ════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════
 // INVITATION MODELE
 // ════════════════════════════════════════════════════════════════════
 
@@ -369,6 +408,7 @@ class Ticket {
   final List<String> attachments;   // toutes les PJ (URLs absolues)
   final String? whatsapp;
   final List<TicketMessage> messages;
+  final String? solution;
 
   Ticket({
     required this.id,
@@ -383,6 +423,7 @@ class Ticket {
     this.attachments = const [],
     this.whatsapp,
     this.messages = const [],
+    this.solution,
   });
 
   // 🛠️ AJOUT PASSERELLE : Crée un alias automatique pour éviter les erreurs de compilation 
@@ -409,6 +450,7 @@ class Ticket {
     whatsapp: j['whatsapp'],
     messages: (j['messages'] as List<dynamic>? ?? j['communications'] as List<dynamic>? ?? [])
         .map((m) => TicketMessage.fromJson(m, currentUserId: currentUserId)).toList(),
+    solution: j['solution'],
   );
 
   Map<String, dynamic> toJson() => {
@@ -450,7 +492,7 @@ class TicketPage {
 // USER MODELE
 // ════════════════════════════════════════════════════════════════════
 
-enum UserRole { admin, agent, superviseur, usager }
+enum UserRole { admin, agent, superviseur, usager, secretaire }
 
 extension UserRoleExt on UserRole {
   String get label {
@@ -459,6 +501,18 @@ extension UserRoleExt on UserRole {
       case UserRole.agent:       return 'Agent DSI';
       case UserRole.superviseur: return 'Superviseur';
       case UserRole.usager:      return 'Usager';
+      case UserRole.secretaire:  return 'Secrétaire';
+    }
+  }
+
+  /// Nom exact attendu par le backend (table `role`.nom).
+  String get apiValue {
+    switch (this) {
+      case UserRole.admin:       return 'ADMIN';
+      case UserRole.agent:       return 'AGENT_DSI';
+      case UserRole.superviseur: return 'SUPERVISEUR';
+      case UserRole.usager:      return 'USAGER';
+      case UserRole.secretaire:  return 'SECRETAIRE';
     }
   }
 
@@ -467,6 +521,7 @@ extension UserRoleExt on UserRole {
       case 'ADMIN':       return UserRole.admin;
       case 'AGENT_DSI':   return UserRole.agent;
       case 'SUPERVISEUR': return UserRole.superviseur;
+      case 'SECRETAIRE':  return UserRole.secretaire;
       default:            return UserRole.usager;
     }
   }
@@ -536,6 +591,7 @@ class AuthResponse {
   final String email;
   final String role;
   final String initiales;
+  final List<String> permissions;
 
   AppUser get utilisateur => AppUser(
     id: userId,
@@ -558,6 +614,7 @@ class AuthResponse {
     required this.email,
     required this.role,
     required this.initiales,
+    this.permissions = const [],
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> j) => AuthResponse(
@@ -569,6 +626,7 @@ class AuthResponse {
     email:     j['email'] ?? '',
     role:      j['role'] ?? 'USAGER',
     initiales: j['initiales'] ?? '',
+    permissions: (j['permissions'] as List<dynamic>? ?? []).map((p) => p.toString()).toList(),
   );
 }
 

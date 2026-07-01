@@ -12,6 +12,7 @@ class StorageService {
   String? _cachedUserNom;
   String? _cachedUserRole;
   String? _cachedInitiales;
+  String? _cachedPermissions;
 
   /// Accès synchrone à l'userId (disponible dès après le login)
   String? get cachedUserId => _cachedUserId;
@@ -51,12 +52,14 @@ class StorageService {
     required String userNom,
     required String userRole,
     String initiales = '',
+    List<String> permissions = const [],
   }) async {
     // Mise à jour du cache synchrone avant l'écriture async
     _cachedUserId    = userId;
     _cachedUserNom   = userNom;
     _cachedUserRole  = userRole;
     _cachedInitiales = initiales;
+    _cachedPermissions = permissions.join(',');
 
     await Future.wait([
       _write(StorageKeys.accessToken, accessToken),
@@ -65,6 +68,7 @@ class StorageService {
       _write(StorageKeys.userNom, userNom),
       _write(StorageKeys.userRole, userRole),
       _write(StorageKeys.initiales, initiales),
+      _write(StorageKeys.permissions, permissions.join(',')),
     ]);
   }
 
@@ -73,6 +77,7 @@ class StorageService {
     _cachedUserNom   = null;
     _cachedUserRole  = null;
     _cachedInitiales = null;
+    _cachedPermissions = null;
     await _deleteAll();
   }
 
@@ -86,6 +91,14 @@ class StorageService {
   Future<String?> get userRole  => _read(StorageKeys.userRole);
   Future<String?> get initiales => _read(StorageKeys.initiales);
   Future<String?> get token     => _read(StorageKeys.accessToken);
+
+  /// Liste des permissions accordées (ex: ["AFFECTER_AGENT", "GERER_INVITATIONS"]).
+  Future<List<String>> get permissions async {
+    final raw = await _read(StorageKeys.permissions);
+    if (raw == null || raw.isEmpty) return [];
+    return raw.split(',');
+  }
+
   // 🎯 Ajout des méthodes publiques pour gérer les clés génériques (ex: Paramètres)
   Future<void> write(String key, String value) async {
     await _write(key, value);
@@ -96,6 +109,7 @@ Future<void> loadCache() async {
   _cachedUserNom = await _read(StorageKeys.userNom);
   _cachedUserRole = await _read(StorageKeys.userRole);
   _cachedInitiales = await _read(StorageKeys.initiales);
+  _cachedPermissions = await _read(StorageKeys.permissions);
 }
   Future<String?> read(String key) async {
     return await _read(key);

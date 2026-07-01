@@ -6,4 +6,5 @@ class StorageKeys {
   static const String userNom = 'userNom';
   static const String userRole = 'userRole';
   static const String initiales = 'initiales';
+  static const String permissions = 'permissions';
 }

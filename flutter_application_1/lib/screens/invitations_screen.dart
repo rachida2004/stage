@@ -41,6 +41,10 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   void initState() {
     super.initState();
     _initialiserOngletSelonRole();
+    // 🎯 Vide la pastille "Invitations" (notifications liées non lues) à l'ouverture de l'écran.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<NotifBloc>().add(MarkCategoryRead(NotifCategory.invitation));
+    });
   }
 
   Future<void> _initialiserOngletSelonRole() async {
@@ -78,9 +82,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
           _chargerOngletActuel();
         }
         if (state is InvitationError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.msg), backgroundColor: AppColors.danger),
-          );
+          showErrorSnack(context, state.msg);
         }
       },
       builder: (context, state) {
@@ -108,34 +110,49 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
             ],
           ),
           
-floatingActionButton: _currentTab == _InvTab.envoyees
-  ? FloatingActionButton.extended(
-      heroTag: 'fab_enregistrer',
-      onPressed: () => _showAddDialog(context),
-      backgroundColor: const Color.fromARGB(255, 6, 69, 21),
-      foregroundColor: Colors.white,
-      icon: const Icon(Icons.add),
-      label: const Text("Enregistrer"),
-    )
-  : FloatingActionButton.extended(
-      heroTag: 'fab_creer',
-      onPressed: () {
-        // 🎯 Ouvre le formulaire de lettre d'invitation officielle
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BlocProvider.value(
-              value: context.read<InvitationBloc>(), // Transmet le Bloc pour conserver l'état du formulaire
-              child: const InvitationScreen(), // 👈 Formulaire de création (lettre officielle)
-            ),
-          ),
+floatingActionButton: BlocBuilder<AuthBloc, AuthState>(
+  builder: (_, authState) {
+    // 🎯 Seuls ADMIN, SECRETAIRE, SUPERVISEUR et tout rôle ayant
+    // GERER_INVITATIONS peuvent créer ou enregistrer une invitation.
+    // AGENT_DSI et USAGER ne voient aucun bouton de création.
+    final role = authState is AuthOk ? authState.role : '';
+    final peutCreer = authState is AuthOk && (
+      role == 'ADMIN' ||
+      role == 'SECRETAIRE' ||
+      role == 'SUPERVISEUR' ||
+      authState.permissions.contains('GERER_INVITATIONS')
+    );
+    if (!peutCreer) return const SizedBox.shrink();
+
+    return _currentTab == _InvTab.envoyees
+      ? FloatingActionButton.extended(
+          heroTag: 'fab_enregistrer',
+          onPressed: () => _showAddDialog(context),
+          backgroundColor: const Color.fromARGB(255, 6, 69, 21),
+          foregroundColor: Colors.white,
+          icon: const Icon(Icons.add),
+          label: const Text("Enregistrer"),
+        )
+      : FloatingActionButton.extended(
+          heroTag: 'fab_creer',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BlocProvider.value(
+                  value: context.read<InvitationBloc>(),
+                  child: const InvitationScreen(),
+                ),
+              ),
+            );
+          },
+          backgroundColor: const Color.fromARGB(255, 2, 50, 20),
+          foregroundColor: Colors.white,
+          icon: const Icon(Icons.edit),
+          label: const Text("Creer"),
         );
-      },
-      backgroundColor: const Color.fromARGB(255, 2, 50, 20),
-      foregroundColor: Colors.white,
-      icon: const Icon(Icons.edit),
-      label: const Text("Creer"),
-    ),
+  },
+),
           body: Column(
             children: [
               Padding(
@@ -166,7 +183,7 @@ floatingActionButton: _currentTab == _InvTab.envoyees
           context.read<InvitationBloc>().add(LoadInvitationsEnvoyees());
         },
         icon: const Icon(Icons.send_rounded, size: 18),
-        label: const Text('Envoyer', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        label: const Text('RECU', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
       ),
     ),
     
@@ -188,7 +205,7 @@ floatingActionButton: _currentTab == _InvTab.envoyees
           context.read<InvitationBloc>().add(LoadInvitationsRecues());
         },
         icon: const Icon(Icons.download_rounded, size: 18),
-        label: const Text('Reçu', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        label: const Text('ENVOYER', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
       ),
     ),
   ],
@@ -672,6 +689,16 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   final List<String> _selectedAgentIds = []; 
   String? _responsableId;
 
+  // 🎯 IMPORTANT — Le InvitationBloc est PARTAGÉ globalement (liste, création,
+  // détail...). Si un autre écran déclenche LoadInvitationsEnvoyees/Recues
+  // pendant qu'on est sur cette page de détail, le state du Bloc n'est plus
+  // InvDetailLoaded et l'écran retombait sur `widget.inv` (la version
+  // d'AVANT le clic sur "Retirer") — donc le retrait semblait ne rien faire,
+  // même si la suppression avait bien réussi côté serveur.
+  // On garde donc la dernière invitation connue (_invAffichee) et on ne la
+  // remplace QUE quand le state reçu est effectivement InvDetailLoaded.
+  late Invitation _invAffichee;
+
   // Configuration de l'URL de ton serveur de gestion DSI (Ajuste l'adresse en prod ou préprod)
   // Utilise "http://10.0.2.2:8080" pour tester depuis un émulateur Android vers ton localhost
   static final String _baseUrl = kIsWeb ? "http://localhost:8085" : "http://10.0.2.2:8085";
@@ -679,6 +706,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _invAffichee = widget.inv;
     _selectedAgentIds.addAll(widget.inv.agentsAffectes.map((a) => a.id.toString()));
   }
 
@@ -744,6 +772,18 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
       targetUrl = targetUrl.substring(1);
     }
     targetUrl = "$_baseUrl/api/files/download/$targetUrl";
+  }
+
+  // 🎯 Un navigateur sait afficher un PDF ou une image dans une iframe,
+  // mais PAS un .docx/.doc/.xlsx (aucun navigateur ne le rend nativement).
+  // Pour ces formats, on ouvre/télécharge directement au lieu d'afficher
+  // un aperçu cassé/vide dans l'iframe.
+  final ext = targetUrl.split('.').last.toLowerCase().split('?').first;
+  const previsualisable = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+  if (!previsualisable.contains(ext)) {
+    await ouvrirPieceJointe(targetUrl);
+    return;
   }
 
   print("🎯 URL finale appelée pour l'IFrame : $targetUrl");
@@ -869,25 +909,42 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
         ),
         actions: [
-          if (!estUneLettreCreee)
-            TextButton.icon(
-              onPressed: () => _showAffectationModal(context),
-              icon: const Icon(Icons.person_add_outlined, size: 20, color: Colors.white),
-              label: const Text(
-                'Affecter',
-                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-            ),
+          // 🎯 ADMIN, ou tout rôle ayant la permission AFFECTER_AGENT (cochée
+          // depuis Admin → Rôles → permissions, sans toucher au code).
+          BlocBuilder<AuthBloc, AuthState>(
+            builder: (_, authState) {
+              final peutAffecter = authState is AuthOk && authState.a('AFFECTER_AGENT');
+              if (estUneLettreCreee || !peutAffecter) return const SizedBox.shrink();
+              return TextButton.icon(
+                onPressed: () => _showAffectationModal(context),
+                icon: const Icon(Icons.person_add_outlined, size: 20, color: Colors.white),
+                label: const Text(
+                  'Affecter',
+                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+              );
+            },
+          ),
           const SizedBox(width: 8),
         ],
       ),
       backgroundColor: const Color(0xFFF1F5F9),
-      body: BlocBuilder<InvitationBloc, InvitationState>(
-        builder: (context, state) {
-          Invitation invitationAffichee = widget.inv;
-          if (state is InvDetailLoaded) {
-            invitationAffichee = state.inv;
+      body: BlocConsumer<InvitationBloc, InvitationState>(
+        // 🎯 Jusqu'ici, aucune erreur n'était jamais affichée sur cet écran —
+        // si "Retirer" échouait côté serveur, rien ne le signalait, on
+        // retombait juste sur l'ancienne liste sans explication.
+        listener: (context, state) {
+          if (state is InvitationError) {
+            showErrorSnack(context, state.msg);
           }
+        },
+        builder: (context, state) {
+          // On ne met à jour le cache QUE lorsque l'état concerne bien le détail
+          // de CETTE invitation (et pas un rechargement de liste déclenché ailleurs).
+          if (state is InvDetailLoaded && state.inv.id == widget.inv.id) {
+            _invAffichee = state.inv;
+          }
+          final Invitation invitationAffichee = _invAffichee;
 
           final bool afficherExport = invitationAffichee.modeCreation == 'CREER';
           final bool afficherAffectation = !afficherExport;
@@ -1047,7 +1104,15 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
                                   PopupMenuButton<String>(
                                     icon: const Icon(Icons.more_vert, size: 18),
                                     onSelected: (action) {
-                                      if (si.structureInviteeId == null) return;
+                                      if (si.structureInviteeId == null) {
+                                        // 🎯 Ne devrait jamais arriver si le backend renvoie bien
+                                        // "structureInviteeId" — message explicite plutôt qu'un no-op silencieux.
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                          content: Text("Impossible d'identifier cette structure destinataire (id manquant)."),
+                                          backgroundColor: Colors.red,
+                                        ));
+                                        return;
+                                      }
                                       if (action == 'RETIRER') {
                                         context.read<InvitationBloc>().add(
                                             SupprimerStructureInvitee(structureInviteeId: si.structureInviteeId!));
@@ -1558,8 +1623,8 @@ class _AjouterStructureDialogState extends State<_AjouterStructureDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Ajouter une structure destinataire'),
-      content: SizedBox(
-        width: 360,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
         child: _loading
             ? const SizedBox(height: 80, child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
             : _structures.isEmpty

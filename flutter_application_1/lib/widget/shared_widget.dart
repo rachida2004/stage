@@ -36,6 +36,7 @@ class StatusBadge extends StatelessWidget {
       case UserRole.agent:       return StatusBadge(label: r.label, bg: AppColors.warningLight, fg: AppColors.warning);
       case UserRole.superviseur: return StatusBadge(label: r.label, bg: AppColors.successLight, fg: AppColors.success);
       case UserRole.usager:      return StatusBadge(label: r.label, bg: AppColors.surface, fg: AppColors.muted);
+      case UserRole.secretaire:  return StatusBadge(label: r.label, bg: AppColors.primaryLight, fg: AppColors.primary);
     }
   }
 
@@ -288,4 +289,19 @@ activeTrackColor: AppColors.primary.withValues(alpha: 0.5),
       ],
     );
   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 🎯 Affichage d'erreur centralisé — un message "pas le droit" (403) ou
+// "session expirée" (401) n'est pas une vraie erreur système : on l'affiche
+// en orange (information claire) plutôt qu'en rouge (réservé aux erreurs
+// inattendues). Le texte lui-même vient déjà d'ApiException.fromDio.
+// ════════════════════════════════════════════════════════════════════
+void showErrorSnack(BuildContext context, String message) {
+  final pasDeDroits = message.contains('droits nécessaires') || message.contains('session a expiré');
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(message),
+    backgroundColor: pasDeDroits ? Colors.orange : AppColors.danger,
+    behavior: SnackBarBehavior.floating,
+  ));
 }

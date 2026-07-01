@@ -26,7 +26,15 @@ class ResetPwdSubmitted extends AuthEvent {
 abstract class AuthState extends Equatable { @override List<Object?> get props => []; }
 class AuthInitial extends AuthState {}
 class AuthLoading extends AuthState {}
-class AuthOk extends AuthState { final String userNom; final String initiales; AuthOk(this.userNom, {this.initiales = ''}); @override List<Object?> get props => [userNom, initiales]; }
+class AuthOk extends AuthState {
+  final String userNom; final String initiales; final String role; final List<String> permissions;
+  AuthOk(this.userNom, {this.initiales = '', this.role = '', this.permissions = const []});
+  @override List<Object?> get props => [userNom, initiales, role, permissions];
+  /// 🎯 Vrai si ADMIN (accès total) ou si la permission précise est accordée
+  /// à l'un des rôles de l'utilisateur — utilisé pour afficher/cacher des
+  /// actions sensibles (ex: "Affecter un agent") sans connaître les noms de rôle.
+  bool a(String permission) => role == 'ADMIN' || permissions.contains(permission);
+}
 class AuthOut extends AuthState {}
 class AuthError extends AuthState { final String msg; AuthError(this.msg); @override List<Object?> get props => [msg]; }
 class AuthForgotSent extends AuthState {}
@@ -40,7 +48,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       if (ok) {
         final nom = await _s.currentUserNom ?? '';
         final ini = await _s.currentInitiales ?? '';
-        emit(AuthOk(nom, initiales: ini));
+        final role = await _s.currentRole ?? '';
+        final perms = await _s.currentPermissions;
+        emit(AuthOk(nom, initiales: ini, role: role, permissions: perms));
       } else {
         emit(AuthOut());
       }
@@ -49,14 +59,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(AuthLoading());
       try {
         final r = await _s.login(e.e, e.p);
-        emit(AuthOk(r.utilisateur.nom, initiales: r.initiales));
+        emit(AuthOk(r.utilisateur.nom, initiales: r.initiales, role: r.role, permissions: r.permissions));
       } catch (err) { emit(AuthError(err.toString())); }
     });
     on<RegisterSubmitted>((e, emit) async {
       emit(AuthLoading());
       try {
         final r = await _s.register(e.data);
-        emit(AuthOk(r.utilisateur.nom, initiales: r.initiales));
+        emit(AuthOk(r.utilisateur.nom, initiales: r.initiales, role: r.role, permissions: r.permissions));
       } catch (err) { emit(AuthError(err.toString())); }
     });
     on<LogoutRequested>((_, emit) async { await _s.logout(); emit(AuthOut()); });
@@ -500,6 +510,10 @@ abstract class NotifEvent extends Equatable {
 class LoadNotifs extends NotifEvent {}
 class MarkRead extends NotifEvent { final String id; MarkRead(this.id); @override List<Object?> get props => [id]; }
 class MarkAllRead extends NotifEvent {}
+// 🎯 Marque comme lues toutes les notifications d'une catégorie donnée (ex: en
+// ouvrant l'écran Invitations, on vide la pastille "Invitations" sans toucher
+// aux notifications Tickets/Autres).
+class MarkCategoryRead extends NotifEvent { final NotifCategory category; MarkCategoryRead(this.category); @override List<Object?> get props => [category]; }
 
 abstract class NotifState extends Equatable { 
   @override List<Object?> get props => []; 
@@ -529,6 +543,19 @@ class NotifBloc extends Bloc<NotifEvent, NotifState> {
     
     on<MarkAllRead>((_, emit) async { 
       try { await _s.markAllAsRead(); add(LoadNotifs()); } catch (_) {} 
+    });
+
+    on<MarkCategoryRead>((e, emit) async {
+      final current = state;
+      if (current is! NotifsLoaded) return;
+      final aMarquer = current.list.where((n) => n.category == e.category && !n.isRead).toList();
+      if (aMarquer.isEmpty) return;
+      try {
+        for (final n in aMarquer) {
+          await _s.markAsRead(n.id);
+        }
+        add(LoadNotifs());
+      } catch (_) {}
     });
   }
 }

@@ -132,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Text('DSI Ministère — Burkina Faso',
+                    const Text('DSI MESFPT — Burkina Faso',
                         style: TextStyle(fontSize: 11, color: AppColors.muted)),
                   ],
                 ),

@@ -117,10 +117,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: 'Actualiser',
             onPressed: () => context.read<DashboardBloc>().add(LoadDashboard()),
           ),
-          const Padding(
-            padding: EdgeInsets.only(right: 12),
-            child: UserAvatar(initials: 'KO', size: 32),
-          ),
+          
         ],
       ),
       body: RefreshIndicator(

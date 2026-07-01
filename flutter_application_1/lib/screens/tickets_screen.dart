@@ -25,6 +25,10 @@ class _TicketsScreenState extends State<TicketsScreen> {
   void initState() {
     super.initState();
     context.read<TicketBloc>().add(LoadTickets());
+    // 🎯 Vide la pastille "Tickets" (notifications liées non lues) à l'ouverture de l'écran.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<NotifBloc>().add(MarkCategoryRead(NotifCategory.ticket));
+    });
   }
 
   List<Ticket> _applyFilters(List<Ticket> all) {
@@ -46,9 +50,19 @@ class _TicketsScreenState extends State<TicketsScreen> {
         if (state is TicketsLoaded) {
           allTickets = state.page.items;
         } else if (state is TicketError) {
+          final pasDeDroits = state.msg.contains('droits nécessaires') || state.msg.contains('session a expiré');
           return Scaffold(
             appBar: AppBar(title: const Text('Tickets')),
-            body: Center(child: Text('Erreur : ${state.msg}', style: const TextStyle(color: Colors.red))),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  state.msg,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: pasDeDroits ? Colors.orange[800] : Colors.red),
+                ),
+              ),
+            ),
           );
         }
 
@@ -266,6 +280,70 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
+  // 🎯 Le backend exige un texte de solution pour passer un ticket en RESOLU
+  // (TicketService.modifierStatut lève une erreur 400 sinon — "Une solution
+  // est requise pour clore le ticket."). On demande donc cette solution
+  // avant d'envoyer la requête, au lieu de marquer résolu directement.
+  void _demanderSolutionEtResoudre(BuildContext context, String ticketId) {
+    final solutionCtrl = TextEditingController();
+    final ticketBloc = context.read<TicketBloc>();
+    String? erreur;
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) {
+          return AlertDialog(
+            title: const Text('Marquer le ticket résolu'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Décrivez brièvement la solution apportée :',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: solutionCtrl,
+                  autofocus: true,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: 'ex: Remplacement du câble réseau défectueux',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    errorText: erreur,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+                onPressed: () {
+                  if (solutionCtrl.text.trim().isEmpty) {
+                    setState(() => erreur = 'La solution est obligatoire.');
+                    return;
+                  }
+                  Navigator.pop(dialogContext);
+                  ticketBloc.add(UpdateStatut(
+                    ticketId,
+                    TicketStatus.resolu,
+                    solution: solutionCtrl.text.trim(),
+                  ));
+                },
+                child: const Text('Valider', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _ouvrirDialogueAffectation(BuildContext context, String ticketId) {
     AppUser? agentSelectionne;
     context.read<AdminBloc>().add(LoadUsers());
@@ -346,11 +424,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           if (state is TicketDetailL) t = state.ticket;
 
           if (state is TicketError && state.msg.isNotEmpty) {
+            final pasDeDroits = state.msg.contains('droits nécessaires') || state.msg.contains('session a expiré');
             return Scaffold(
               appBar: AppBar(title: Text('#${widget.ticket.id}')),
               body: Center(
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text(state.msg, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                  Text(state.msg, style: TextStyle(color: pasDeDroits ? Colors.orange[800] : Colors.red), textAlign: TextAlign.center),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () => context.read<TicketBloc>().add(LoadTicketDetail(widget.ticket.id)),
@@ -376,22 +455,31 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     tooltip: 'Contacter sur WhatsApp',
                     onPressed: () => _ouvrirWhatsApp(context, whatsapp),
                   ),
-                PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'assign') _ouvrirDialogueAffectation(context, t.id);
-                    else if (v == 'pause') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause));
-                    else if (v == 'resolve') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.resolu));
-                    else if (v == 'close') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.ferme));
-                    else if (v == 'delete') _showDeleteConfirmationDialog(context, t.id);
+                // 🎯 Un USAGER crée un ticket et consulte son état, mais ne gère
+                // pas son cycle de vie (affecter/pause/résolu/fermer/supprimer) —
+                // c'est l'agent affecté qui le fait. On masque donc ce menu pour lui.
+                BlocBuilder<AuthBloc, AuthState>(
+                  builder: (_, authState) {
+                    final estUsager = authState is AuthOk && authState.role == 'USAGER';
+                    if (estUsager) return const SizedBox.shrink();
+                    return PopupMenuButton<String>(
+                      onSelected: (v) {
+                        if (v == 'assign') _ouvrirDialogueAffectation(context, t.id);
+                        else if (v == 'pause') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause));
+                        else if (v == 'resolve') _demanderSolutionEtResoudre(context, t.id);
+                        else if (v == 'close') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.ferme));
+                        else if (v == 'delete') _showDeleteConfirmationDialog(context, t.id);
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: 'assign', child: Text('Affecter un agent')),
+                        const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
+                        const PopupMenuItem(value: 'resolve', child: Text('Marquer résolu')),
+                        const PopupMenuItem(value: 'close', child: Text('Fermer le ticket')),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(value: 'delete', child: Text('Supprimer', style: TextStyle(color: Colors.red))),
+                      ],
+                    );
                   },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'assign', child: Text('Affecter un agent')),
-                    const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
-                    const PopupMenuItem(value: 'resolve', child: Text('Marquer résolu')),
-                    const PopupMenuItem(value: 'close', child: Text('Fermer le ticket')),
-                    const PopupMenuDivider(),
-                    const PopupMenuItem(value: 'delete', child: Text('Supprimer', style: TextStyle(color: Colors.red))),
-                  ],
                 ),
               ],
             ),
@@ -466,45 +554,80 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       ),
                     ],
 
+                    // ── Solution apportée (si le ticket a été résolu) ────
+                    if (t.solution != null && t.solution!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      const Text('Solution apportée',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.muted)),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.successLight,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                        ),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(t.solution!, style: const TextStyle(fontSize: 13, color: AppColors.success)),
+                          ),
+                        ]),
+                      ),
+                    ],
+
                     const SizedBox(height: 16),
                     const Divider(height: 1),
                     const SizedBox(height: 12),
 
-                    // ── Boutons d'action ────────────────────────────────
-                    Row(children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause)),
-                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
-                          child: const Text('En pause', style: TextStyle(fontSize: 12)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.resolu)),
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.success,
-                              padding: const EdgeInsets.symmetric(vertical: 10)),
-                          child: const Text('Résolu', style: TextStyle(fontSize: 12, color: Colors.white)),
-                        ),
-                      ),
-                    ]),
-                    const SizedBox(height: 8),
-                    // ── Bouton supprimer centré ─────────────────────────
-                    Center(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showDeleteConfirmationDialog(context, t.id),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red, width: 1.0),
-                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.delete_outline, size: 16),
-                        label: const Text('Supprimer le ticket',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ),
+                    // ── Boutons d'action (masqués pour un USAGER — il consulte
+                    // l'état mais ne gère pas le cycle de vie du ticket) ────
+                    BlocBuilder<AuthBloc, AuthState>(
+                      builder: (_, authState) {
+                        final estUsager = authState is AuthOk && authState.role == 'USAGER';
+                        if (estUsager) return const SizedBox.shrink();
+                        return Column(children: [
+                          Row(children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause)),
+                                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+                                child: const Text('En pause', style: TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () => _demanderSolutionEtResoudre(context, t.id),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.success,
+                                    padding: const EdgeInsets.symmetric(vertical: 10)),
+                                child: const Text('Résolu', style: TextStyle(fontSize: 12, color: Colors.white)),
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 8),
+                          // ── Bouton supprimer centré ─────────────────────
+                          Center(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _showDeleteConfirmationDialog(context, t.id),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red, width: 1.0),
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              icon: const Icon(Icons.delete_outline, size: 16),
+                              label: const Text('Supprimer le ticket',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                            ),
+                          ),
+                        ]);
+                      },
                     ),
                     const SizedBox(height: 8),
                   ]),
@@ -857,12 +980,14 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2)))
                     : DropdownButtonFormField<Structure>(
                         value: _structureSelectionnee,
+                        isExpanded: true,
+                        menuMaxHeight: 200,
                         decoration: const InputDecoration(
                           labelText: 'Structure',
                           prefixIcon: Icon(Icons.business_outlined, size: 18),
                         ),
                         items: _structures.map((s) => DropdownMenuItem<Structure>(
-                            value: s, child: Text(s.nom))).toList(),
+                            value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis))).toList(),
                         onChanged: (val) {
                           setState(() => _structureSelectionnee = val);
                           if (val?.id != null) _chargerServices(val!.id!);
@@ -879,12 +1004,14 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
                           child: CircularProgressIndicator(strokeWidth: 2)))
                       : DropdownButtonFormField<Service>(
                           value: _serviceSelectionne,
+                          isExpanded: true,
+                          menuMaxHeight: 200,
                           decoration: const InputDecoration(
                             labelText: 'Service concerné',
                             prefixIcon: Icon(Icons.layers_outlined, size: 18),
                           ),
                           items: _services.map((s) => DropdownMenuItem<Service>(
-                              value: s, child: Text(s.nom))).toList(),
+                              value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis))).toList(),
                           onChanged: (val) => setState(() => _serviceSelectionne = val),
                           validator: (v) => v == null ? 'Sélectionnez un service' : null,
                         ),
@@ -893,6 +1020,8 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
                 // ── Priorité ───────────────────────────────────────────
                 DropdownButtonFormField<TicketPriority>(
                   value: _priority,
+                  isExpanded: true,
+                  menuMaxHeight: 200,
                   decoration: const InputDecoration(
                     labelText: 'Priorité',
                     prefixIcon: Icon(Icons.flag_outlined, size: 18),

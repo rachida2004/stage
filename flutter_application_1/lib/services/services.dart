@@ -110,6 +110,12 @@ class InvitationService {
       };
       if (data['nomStructure'] != null && data['nomStructure'].toString().isNotEmpty)
         payload['nomStructure'] = data['nomStructure'];
+      // 🎯 Le formulaire "Enregistrer" envoie un champ texte libre sous la clé
+      // 'structureEmettrice' (pas 'nomStructure') — sans ce relais, il était
+      // silencieusement ignoré et la structure émettrice restait "Non spécifiée"
+      // même quand l'utilisateur avait bien saisi du texte.
+      else if (data['structureEmettrice'] != null && data['structureEmettrice'].toString().isNotEmpty)
+        payload['nomStructure'] = data['structureEmettrice'];
       if (data['dateDebut'] != null) payload['dateDebut'] = data['dateDebut'];
       if (data['dateFin'] != null)   payload['dateFin']   = data['dateFin'];
       if (data['structureEmettriceId'] != null) payload['structureEmettriceId'] = data['structureEmettriceId'];
@@ -139,7 +145,6 @@ class InvitationService {
   }
 
   Future<Invitation> update(String id, Map<String, dynamic> data) async {
-    print("--- DÉBUT DE LA REQUÊTE ---");
     print("URL: ${ApiConstants.invitations}/$id");
     print("DATA: $data");
     try { 
@@ -157,6 +162,21 @@ class InvitationService {
   Future<void> delete(String id) async {
     try { await _api.dio.delete('${ApiConstants.invitations}/$id'); }
     on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  // 🎯 Ajoute des pièces jointes à une invitation déjà existante (écran "Modifier"),
+  // qu'il y en ait déjà ou pas.
+  Future<Invitation> ajouterPiecesJointes(String id, List<MapEntry<String, Uint8List>> fileBytes) async {
+    try {
+      final payload = <String, dynamic>{
+        'files': fileBytes.map((f) => MultipartFile.fromBytes(f.value, filename: f.key)).toList(),
+      };
+      final res = await _api.dio.post(
+        '${ApiConstants.invitations}/$id/attachments',
+        data: FormData.fromMap(payload),
+      );
+      return Invitation.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
   Future<Invitation> updateStatus(String id, InvitationStatus status) async {
@@ -343,6 +363,7 @@ class AuthService {
         accessToken: auth.accessToken, refreshToken: auth.refreshToken,
         userId: auth.userId, userNom: '${auth.nom} ${auth.prenom}',
         userRole: auth.role, initiales: auth.initiales,
+        permissions: auth.permissions,
       );
       return auth;
     } on DioException catch (e) { throw ApiException.fromDio(e); }
@@ -356,6 +377,7 @@ class AuthService {
         accessToken: auth.accessToken, refreshToken: auth.refreshToken,
         userId: auth.userId, userNom: '${auth.nom} ${auth.prenom}',
         userRole: auth.role, initiales: auth.initiales,
+        permissions: auth.permissions,
       );
       return auth;
     } on DioException catch (e) { throw ApiException.fromDio(e); }
@@ -382,6 +404,8 @@ class AuthService {
   Future<String?> get currentUserId    => _storage.userId;
   Future<String?> get currentUserNom   => _storage.userNom;
   Future<String?> get currentInitiales => _storage.initiales;
+  Future<String?> get currentRole      => _storage.userRole;
+  Future<List<String>> get currentPermissions => _storage.permissions;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -608,6 +632,50 @@ Future<List<AppUser>> getUsers() async {
       throw ApiException.fromDio(e);
     }
   }
+
+  // ── Rôles — CRUD complet ──────────────────────────────────────────
+
+  Future<List<AppRole>> getRoles() async {
+    try {
+      final res = await _api.dio.get('/api/roles');
+      return (res.data as List).map((r) => AppRole.fromJson(r)).toList();
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<AppRole> createRole(Map<String, dynamic> data) async {
+    try {
+      final res = await _api.dio.post('/api/roles', data: data);
+      return AppRole.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<AppRole> updateRole(int id, Map<String, dynamic> data) async {
+    try {
+      final res = await _api.dio.put('/api/roles/$id', data: data);
+      return AppRole.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  Future<void> deleteRole(int id) async {
+    try { await _api.dio.delete('/api/roles/$id'); }
+    on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  /// Catalogue de toutes les permissions disponibles (pour les cases à cocher).
+  Future<List<String>> getPermissionsDisponibles() async {
+    try {
+      final res = await _api.dio.get('/api/roles/permissions');
+      return (res.data as List).map((p) => p.toString()).toList();
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  /// Remplace l'ensemble des permissions d'un rôle.
+  Future<AppRole> updateRolePermissions(int roleId, List<String> permissions) async {
+    try {
+      final res = await _api.dio.put('/api/roles/$roleId/permissions', data: {'permissions': permissions});
+      return AppRole.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -621,6 +689,20 @@ class ApiException implements Exception {
 
   factory ApiException.fromDio(DioException e) {
     final code = e.response?.statusCode;
+
+    // 🎯 Un 403 vient généralement de Spring Security lui-même (avant même
+    // d'atteindre nos contrôleurs) — son corps de réponse par défaut ne
+    // contient PAS de clé "message" comme nos propres erreurs métier, donc
+    // ça retombait sur un message technique brut ("Http status error
+    // [403]..."). On affiche désormais un message clair et compréhensible,
+    // peu importe ce que contient réellement la réponse.
+    if (code == 403) {
+      return ApiException("Vous n'avez pas les droits nécessaires pour effectuer cette action.", statusCode: code);
+    }
+    if (code == 401) {
+      return ApiException("Votre session a expiré. Veuillez vous reconnecter.", statusCode: code);
+    }
+
     final body = e.response?.data;
     String msg;
     if (body is Map && body.containsKey('message')) {

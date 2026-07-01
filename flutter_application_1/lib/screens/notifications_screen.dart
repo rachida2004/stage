@@ -29,15 +29,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  String _categoryLabel(NotifCategory cat) {
-    switch (cat) {
-      case NotifCategory.invitation: return 'Invitations';
-      case NotifCategory.ticket:     return 'Tickets';
-      case NotifCategory.admin:      return 'Administration';
-      case NotifCategory.dashboard:  return 'Tableau de bord';
-    }
-  }
-
   String _formatDate(DateTime d) {
     final diff = DateTime.now().difference(d);
     if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes} min';
@@ -110,53 +101,93 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             onRefresh: () async => context.read<NotifBloc>().add(LoadNotifs()),
             child: notifications.isEmpty && !isLoading
                 ? const Center(child: Text('Aucune notification', style: TextStyle(color: AppColors.muted)))
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: notifications.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) {
-                      final n = notifications[i];
-                      return AppCard(
-                        onTap: () => _handleNotificationAction(context, n), // Rendre toute la carte cliquable pour le backend
-                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Column(children: [
-                            Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: n.isRead ? Colors.transparent : AppColors.primary)),
-                            const SizedBox(height: 4),
-                            Container(width: 34, height: 34, decoration: BoxDecoration(color: n.isRead ? AppColors.surface : AppColors.primaryLight, borderRadius: BorderRadius.circular(8)),
-                              child: Icon(_iconFor(n.category), size: 16, color: n.isRead ? AppColors.muted : AppColors.primary)),
-                          ]),
-                          const SizedBox(width: 12),
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(n.message, style: TextStyle(fontSize: 13, color: n.isRead ? AppColors.muted : null)),
-                            const SizedBox(height: 4),
-                            Row(children: [
-                              Text(_formatDate(n.date), style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-                              const SizedBox(width: 6),
-                              Container(width: 3, height: 3, decoration: const BoxDecoration(color: AppColors.muted, shape: BoxShape.circle)),
-                              const SizedBox(width: 6),
-                              Text(_categoryLabel(n.category), style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-                            ]),
-                          ])),
-                          if (n.actionLabel != null) ...[
-                            const SizedBox(width: 8),
-                            TextButton(
-                              onPressed: () => _handleNotificationAction(context, n),
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppColors.primary, 
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), 
-                                minimumSize: Size.zero, 
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: Text(n.actionLabel!, style: const TextStyle(fontSize: 12)),
-                            ),
-                          ],
-                        ]),
-                      );
-                    },
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _buildSection(
+                        context,
+                        title: 'Invitations',
+                        emptyLabel: 'Aucune notification d\'invitation',
+                        items: notifications.where((n) => n.category == NotifCategory.invitation).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSection(
+                        context,
+                        title: 'Tickets',
+                        emptyLabel: 'Aucune notification de ticket',
+                        items: notifications.where((n) => n.category == NotifCategory.ticket).toList(),
+                      ),
+                      Builder(builder: (_) {
+                        final autres = notifications
+                            .where((n) => n.category != NotifCategory.invitation && n.category != NotifCategory.ticket)
+                            .toList();
+                        if (autres.isEmpty) return const SizedBox.shrink();
+                        return Column(children: [
+                          const SizedBox(height: 16),
+                          _buildSection(context, title: 'Autres', emptyLabel: '', items: autres),
+                        ]);
+                      }),
+                      const SizedBox(height: 16),
+                    ],
                   ),
           ),
         );
       },
     );
+  }
+
+  /// Section façon "Invitations récentes" / "Tickets récents" du tableau de bord :
+  /// une carte regroupant les lignes (icône + titre + sous-titre + pastille),
+  /// séparées par un Divider — c'est ce format que Dev a demandé pour les
+  /// notifications d'invitation enregistrée / ticket créé.
+  Widget _buildSection(BuildContext context, {required String title, required String emptyLabel, required List<NotificationModel> items}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(title: title),
+        const SizedBox(height: 8),
+        items.isEmpty
+            ? AppCard(child: Center(child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(emptyLabel, style: const TextStyle(color: AppColors.muted)))))
+            : AppCard(child: Column(
+                children: items.asMap().entries.map((e) => _buildNotifRow(context, e.value, isLast: e.key == items.length - 1)).toList(),
+              )),
+      ],
+    );
+  }
+
+  Widget _buildNotifRow(BuildContext context, NotificationModel n, {bool isLast = false}) {
+    return Column(children: [
+      InkWell(
+        onTap: () => _handleNotificationAction(context, n),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 34, height: 34,
+              decoration: BoxDecoration(
+                color: n.isRead ? AppColors.surface : AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(_iconFor(n.category), size: 16, color: n.isRead ? const Color.fromARGB(255, 27, 77, 215) : const Color.fromARGB(255, 155, 34, 10)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(n.message,
+                  style: TextStyle(fontSize: 13, fontWeight: n.isRead ? FontWeight.w400 : FontWeight.w500, color: n.isRead ? AppColors.muted : null),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              Text(_formatDate(n.date), style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+            ])),
+            const SizedBox(width: 8),
+            n.isRead
+                ? const StatusBadge(label: 'Lu', bg: AppColors.surface, fg: Color.fromARGB(255, 24, 49, 139))
+                : const StatusBadge(label: 'Nouveau', bg: AppColors.primaryLight, fg: Color.fromARGB(255, 186, 27, 6)),
+          ]),
+        ),
+      ),
+      if (!isLast) const Divider(height: 0),
+    ]);
   }
 }

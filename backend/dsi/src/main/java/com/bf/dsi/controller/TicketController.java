@@ -67,7 +67,9 @@ public class TicketController {
                 .filter(s -> s.getNom().equalsIgnoreCase(req.getStructure()))
                 .findFirst().ifPresent(ticket::setStructure);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(ticketRepo.save(ticket)));
+        Ticket saved = ticketRepo.save(ticket);
+        notifierNouveauTicket(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -111,6 +113,7 @@ public class TicketController {
             }
             ticketRepo.save(saved);
         }
+        notifierNouveauTicket(saved);
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
@@ -199,6 +202,25 @@ public class TicketController {
     public ResponseEntity<?> delete(@PathVariable Long id) {
         ticketRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Ticket supprimé"));
+    }
+
+    // ── Notifications ────────────────────────────────────────────────
+
+    /** Notifie les ADMIN et AGENT_DSI dès qu'un nouveau ticket est créé. */
+    private void notifierNouveauTicket(Ticket ticket) {
+        if (!appSettingService.isInternalNotificationEnabled()) return;
+
+        Map<Long, Utilisateur> destinataires = new LinkedHashMap<>();
+        utilisateurRepo.findByRoles_Nom("ADMIN").forEach(u -> destinataires.put(u.getUserId(), u));
+        utilisateurRepo.findByRoles_Nom("AGENT_DSI").forEach(u -> destinataires.put(u.getUserId(), u));
+
+        String desc = ticket.getDescription();
+        String resume = (desc != null && desc.length() > 60) ? desc.substring(0, 60) + "…" : desc;
+
+        destinataires.values().forEach(u -> notificationRepo.save(Notification.builder()
+            .message("🆕 Nouveau ticket créé : " + resume)
+            .categorie("TICKET").actionLabel("Voir").resourceId(ticket.getId().toString())
+            .utilisateur(u).build()));
     }
 
     // ── Mapping DTO ──────────────────────────────────────────────────

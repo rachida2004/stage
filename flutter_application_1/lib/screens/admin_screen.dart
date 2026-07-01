@@ -22,6 +22,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   // Listes chargées depuis l'API
   List<Structure> _structures = [];
   List<Service>   _services   = [];
+  List<AppRole>   _roles      = [];
   bool _metaLoading = false;
 
   @override
@@ -44,7 +45,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     try {
       final structures = await sl<AdminService>().getStructures();
       final services   = await sl<AdminService>().getServices();
-      if (mounted) setState(() { _structures = structures; _services = services; });
+      final roles      = await sl<AdminService>().getRoles();
+      if (mounted) setState(() { _structures = structures; _services = services; _roles = roles; });
     } catch (_) {
       // Silencieux — le CRUD tab affichera "Aucune donnée"
     } finally {
@@ -64,6 +66,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           user: user,
           structures: _structures,
           services: _services,
+          roles: _roles,
         ),
       ),
     );
@@ -116,8 +119,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         body: TabBarView(
           controller: _tab,
           children: [
-            _UsersTab(onShowForm: _showUserFormSheet),
-            const _RolesTab(),
+            _UsersTab(onShowForm: _showUserFormSheet, rolesCount: _roles.length),
+            _RolesTab(
+              roles: _roles,
+              onRefresh: _loadMetadata,
+              loading: _metaLoading,
+            ),
             _StructuresServicesTab(
               structures: _structures,
               services: _services,
@@ -136,9 +143,30 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 // USERS TAB
 // ════════════════════════════════════════════════════════════════════
 
-class _UsersTab extends StatelessWidget {
+class _UsersTab extends StatefulWidget {
   final void Function(BuildContext, AdminBloc, {AppUser? user}) onShowForm;
-  const _UsersTab({required this.onShowForm});
+  final int rolesCount;
+  const _UsersTab({required this.onShowForm, required this.rolesCount});
+
+  @override
+  State<_UsersTab> createState() => _UsersTabState();
+}
+
+// 🎯 IMPORTANT — NE PAS reconvertir cette classe en StatelessWidget.
+//
+// L'AdminBloc est PARTAGÉ entre cet onglet "Utilisateurs" et l'onglet
+// "Paramètres" (LoadSettings()/SaveSettings() passent par le MÊME flux
+// AdminState). Quand on ouvre l'écran Admin, la séquence est :
+//   LoadUsers()    -> AdminLoading() -> UsersLoaded(users)
+//   LoadSettings() -> AdminLoading() -> SettingsLoaded(settings)
+// Sans cache local, le 2nd appel fait disparaître la liste : le `state`
+// n'est plus UsersLoaded (donc users = []) dès que les paramètres se
+// chargent — c'est exactement le bug "la liste s'affiche puis repart".
+// On garde donc la dernière liste connue (_cachedUsers) et on ne la
+// remplace QUE quand l'état reçu est effectivement UsersLoaded.
+class _UsersTabState extends State<_UsersTab> {
+  List<AppUser> _cachedUsers = [];
+  bool _hasLoadedOnce = false;
 
   @override
   Widget build(BuildContext context) {
@@ -148,20 +176,28 @@ class _UsersTab extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(state.msg), backgroundColor: AppColors.success));
         } else if (state is AdminError) {
-          final isForbidden = state.msg.contains("403") || state.msg.contains("Forbidden");
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(isForbidden ? "Action non autorisée." : state.msg),
-            backgroundColor: isForbidden ? Colors.orange : AppColors.danger,
-            behavior: SnackBarBehavior.floating,
-          ));
+          showErrorSnack(context, state.msg);
         }
       },
       builder: (context, state) {
-        if (state is AdminLoading) {
+        // On ne met à jour le cache que lorsque l'état concerne bien les utilisateurs.
+        if (state is UsersLoaded) {
+          _cachedUsers = state.users;
+          _hasLoadedOnce = true;
+        }
+
+        // Spinner uniquement avant le tout premier chargement réussi —
+        // ensuite on garde toujours la dernière liste connue à l'écran.
+        if (!_hasLoadedOnce && state is AdminLoading) {
           return const Center(child: CircularProgressIndicator());
         }
-        List<AppUser> users = [];
-        if (state is UsersLoaded) users = state.users;
+
+        final users = [..._cachedUsers]
+          ..sort((a, b) {
+            // 🎯 Utilisateurs désactivés toujours en bas de la liste.
+            if (a.isActive == b.isActive) return 0;
+            return a.isActive ? -1 : 1;
+          });
 
         return RefreshIndicator(
           onRefresh: () async => context.read<AdminBloc>().add(LoadUsers()),
@@ -172,7 +208,7 @@ class _UsersTab extends StatelessWidget {
               Row(children: [
                 Expanded(child: StatCard(value: '${users.length}', label: 'Utilisateurs')),
                 const SizedBox(width: 10),
-                const Expanded(child: StatCard(value: '4', label: 'Rôles définis')),
+                Expanded(child: StatCard(value: '${widget.rolesCount}', label: 'Rôles définis')),
               ]),
               const SizedBox(height: 16),
               const SectionHeader(title: 'Liste des utilisateurs'),
@@ -189,7 +225,7 @@ class _UsersTab extends StatelessWidget {
                     children: users.map((u) => _UserTile(
                       user: u,
                       isLast: u == users.last,
-                      onShowForm: onShowForm,
+                      onShowForm: widget.onShowForm,
                     )).toList(),
                   ),
                 ),
@@ -260,37 +296,269 @@ class _UserTile extends StatelessWidget {
 // ROLES TAB
 // ════════════════════════════════════════════════════════════════════
 
-class _RolesTab extends StatelessWidget {
-  const _RolesTab();
+class _RolesTab extends StatefulWidget {
+  final List<AppRole> roles;
+  final Future<void> Function() onRefresh;
+  final bool loading;
 
-  static const roles = [
-    ('Administrateur', 'Accès complet à toutes les fonctionnalités', AppColors.primaryLight, AppColors.primaryDark),
-    ('Agent DSI', 'Gestion invitations, tickets, affectations', AppColors.warningLight, AppColors.warning),
-    ('Superviseur', 'Lecture + affectation, sans administration', AppColors.successLight, AppColors.success),
-    ('Usager', 'Création et suivi de tickets uniquement', AppColors.surface, AppColors.muted),
-  ];
+  const _RolesTab({
+    required this.roles,
+    required this.onRefresh,
+    required this.loading,
+  });
+
+  @override
+  State<_RolesTab> createState() => _RolesTabState();
+}
+
+class _RolesTabState extends State<_RolesTab> {
+  // Couleurs/icône selon le nom du rôle, pour les 4 rôles "système" connus.
+  // Les rôles personnalisés créés via le CRUD utilisent une couleur neutre.
+  static const _connus = {
+    'ADMIN':       (AppColors.primaryLight, AppColors.primaryDark),
+    'AGENT_DSI':   (AppColors.warningLight, AppColors.warning),
+    'SUPERVISEUR': (AppColors.successLight, AppColors.success),
+    'USAGER':      (AppColors.surface, AppColors.muted),
+    'SECRETAIRE':  (AppColors.primaryLight, AppColors.primary),
+  };
+
+  // 🎯 Libellés lisibles pour les permissions (le backend ne connaît que les
+  // noms bruts de l'enum Permission, ex: "AFFECTER_AGENT").
+  static const _libellesPermissions = {
+    'GERER_INVITATIONS': 'Gérer les invitations (créer, enregistrer, générer une lettre)',
+    'AFFECTER_AGENT':    'Affecter un agent (invitation ou ticket)',
+    'GERER_TICKETS':     'Gérer les tickets',
+  };
+
+  List<String> _permissionsCatalogue = [];
+
+  @override
+  void initState() {
+    super.initState();
+    sl<AdminService>().getPermissionsDisponibles().then((p) {
+      if (mounted) setState(() => _permissionsCatalogue = p);
+    }).catchError((_) {});
+  }
+
+  void _showRoleForm({AppRole? role}) {
+    final nomCtrl  = TextEditingController(text: role?.nom ?? '');
+    final descCtrl = TextEditingController(text: role?.description ?? '');
+    final estSysteme = role != null && _connus.containsKey(role.nom);
+    final permsSelectionnees = Set<String>.from(role?.permissions ?? []);
+
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text(role == null ? 'Nouveau rôle' : 'Modifier le rôle',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+              controller: nomCtrl,
+              enabled: role == null, // le nom pilote les droits d'accès, non modifiable après création
+              decoration: InputDecoration(
+                labelText: 'Nom *',
+                hintText: 'ex: SUPERVISEUR_RH',
+                prefixIcon: const Icon(Icons.shield_outlined, size: 18),
+                border: const OutlineInputBorder(),
+                isDense: true,
+                helperText: role != null
+                    ? 'Le nom n\'est plus modifiable une fois le rôle créé.'
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: descCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                prefixIcon: Icon(Icons.notes_outlined, size: 18),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            if (role == null) ...[
+              const SizedBox(height: 10),
+              const Text(
+                "Les permissions ci-dessous donnent de vrais droits, vérifiés "
+                "par le serveur à chaque requête — aucune modification de code "
+                "n'est nécessaire.",
+                style: TextStyle(fontSize: 11, color: AppColors.muted),
+              ),
+            ] else if (estSysteme) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Rôle système : seule la description et les permissions sont modifiables.',
+                style: TextStyle(fontSize: 11, color: AppColors.muted),
+              ),
+            ],
+
+            // ── Permissions ──────────────────────────────────────────
+            const SizedBox(height: 16),
+            const Align(alignment: Alignment.centerLeft,
+                child: Text('Permissions', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+            const SizedBox(height: 4),
+            if (_permissionsCatalogue.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('Aucune permission disponible.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              )
+            else
+              ..._permissionsCatalogue.map((p) => CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(_libellesPermissions[p] ?? p, style: const TextStyle(fontSize: 13)),
+                    value: permsSelectionnees.contains(p),
+                    onChanged: (v) => setDialogState(() {
+                      if (v == true) permsSelectionnees.add(p); else permsSelectionnees.remove(p);
+                    }),
+                  )),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              if (nomCtrl.text.trim().isEmpty) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('Le nom est obligatoire')));
+                return;
+              }
+              Navigator.pop(dialogContext);
+              final payload = {
+                'nom': nomCtrl.text.trim(),
+                'description': descCtrl.text.trim(),
+              };
+              try {
+                int roleId;
+                if (role == null) {
+                  final cree = await sl<AdminService>().createRole(payload);
+                  roleId = cree.id!;
+                } else {
+                  await sl<AdminService>().updateRole(role.id!, payload);
+                  roleId = role.id!;
+                }
+                // 🎯 On pousse toujours l'ensemble des permissions cochées —
+                // marche aussi bien à la création qu'à la modification.
+                await sl<AdminService>().updateRolePermissions(roleId, permsSelectionnees.toList());
+                await widget.onRefresh();
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(role == null ? 'Rôle créé' : 'Rôle modifié'),
+                    backgroundColor: AppColors.success));
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erreur : $e'), backgroundColor: AppColors.danger));
+              }
+            },
+            child: Text(role == null ? 'Créer' : 'Enregistrer'),
+          ),
+        ],
+        ),
+      ),
+    );
+  }
+
+  void _deleteRole(AppRole r) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Supprimer le rôle ?', style: TextStyle(fontSize: 15)),
+        content: Text('Cette action supprimera "${r.nom}" définitivement.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await sl<AdminService>().deleteRole(r.id!);
+                await widget.onRefresh();
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Rôle supprimé'), backgroundColor: AppColors.success));
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erreur : $e'), backgroundColor: AppColors.danger));
+              }
+            },
+            child: const Text('Supprimer', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: roles.map((r) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: AppCard(
-          child: Row(children: [
-            Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(color: r.$3, borderRadius: BorderRadius.circular(10)),
-              child: Icon(Icons.shield_outlined, color: r.$4, size: 20),
+    if (widget.loading && widget.roles.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return RefreshIndicator(
+      onRefresh: widget.onRefresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            const Expanded(child: SectionHeader(title: 'Rôles')),
+            TextButton.icon(
+              onPressed: () => _showRoleForm(),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Ajouter', style: TextStyle(fontSize: 12)),
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(r.$1, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-              Text(r.$2, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-            ])),
           ]),
-        ),
-      )).toList(),
+          const SizedBox(height: 8),
+          if (widget.roles.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: Text('Aucun rôle trouvé.', style: TextStyle(color: AppColors.muted))),
+            )
+          else
+            ...widget.roles.map((r) {
+              final couleurs = _connus[r.nom] ?? (AppColors.surface, AppColors.muted);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: AppCard(
+                  child: Row(children: [
+                    Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(color: couleurs.$1, borderRadius: BorderRadius.circular(10)),
+                      child: Icon(Icons.shield_outlined, color: couleurs.$2, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(r.nom, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text(
+                        (r.description != null && r.description!.isNotEmpty) ? r.description! : 'Aucune description',
+                        style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                      ),
+                      if (r.permissions.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text('${r.permissions.length} permission(s) accordée(s)',
+                              style: const TextStyle(fontSize: 10, color: AppColors.primary)),
+                        ),
+                    ])),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, size: 18, color: AppColors.muted),
+                      onSelected: (action) {
+                        if (action == 'edit') _showRoleForm(role: r);
+                        if (action == 'delete') _deleteRole(r);
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: 'edit', child: Text('Modifier')),
+                        const PopupMenuItem(value: 'delete', child: Text('Supprimer', style: TextStyle(color: AppColors.danger))),
+                      ],
+                    ),
+                  ]),
+                ),
+              );
+            }),
+        ],
+      ),
     );
   }
 }
@@ -837,7 +1105,8 @@ class _UserFormSheet extends StatefulWidget {
   final AppUser?        user;
   final List<Structure> structures;
   final List<Service>   services;
-  const _UserFormSheet({this.user, required this.structures, required this.services});
+  final List<AppRole>   roles;
+  const _UserFormSheet({this.user, required this.structures, required this.services, required this.roles});
 
   @override
   State<_UserFormSheet> createState() => _UserFormSheetState();
@@ -852,10 +1121,23 @@ class _UserFormSheetState extends State<_UserFormSheet> {
   Structure? _selectedStructure;
   Service?   _selectedService;
   List<Service> _filteredServices = [];  // Sera remplie dynamiquement via l'API
-  UserRole?  _selectedRole;
+  UserRole?  _selectedRole; // gardé pour compat d'affichage (badges) en mode édition
+  String?    _selectedRoleNom; // 🎯 nom réel du rôle choisi — alimente le dropdown dynamique
   bool _loadingServices = false; // Pour afficher un indicateur de chargement si besoin
 
   bool get _isEditing => widget.user != null;
+
+  /// Libellé lisible pour les rôles standards ; nom brut pour un rôle personnalisé.
+  String _roleLabel(String nom) {
+    switch (nom) {
+      case 'ADMIN':       return 'Administrateur';
+      case 'AGENT_DSI':   return 'Agent DSI';
+      case 'SUPERVISEUR': return 'Superviseur';
+      case 'USAGER':       return 'Usager';
+      case 'SECRETAIRE':   return 'Secrétaire';
+      default: return nom;
+    }
+  }
 
   @override
   void initState() {
@@ -866,6 +1148,7 @@ class _UserFormSheetState extends State<_UserFormSheet> {
       _prenomCtrl.text = u.prenom ?? '';
       _emailCtrl.text  = u.email;
       _selectedRole    = u.role;
+      _selectedRoleNom = u.role.apiValue;
       
       // Initialisation en mode édition
       _initEditionData(u);
@@ -922,17 +1205,13 @@ class _UserFormSheetState extends State<_UserFormSheet> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
-    final roleStr = _selectedRole == UserRole.agent
-        ? 'AGENT_DSI'
-        : _selectedRole.toString().split('.').last.toUpperCase();
-
     final payload = {
       'nom':       _nomCtrl.text.trim(),
       'prenom':    _prenomCtrl.text.trim(),
       'email':     _emailCtrl.text.trim(),
       'structure': _selectedStructure?.nom,
       'service':   _selectedService?.nom,
-      'role':      roleStr,
+      'role':      _selectedRoleNom,
     };
 
     if (_isEditing) {
@@ -988,9 +1267,11 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                 // Dropdown Structure
                 DropdownButtonFormField<Structure>(
                   value: _selectedStructure,
+                  isExpanded: true,
+                  menuMaxHeight: 200,
                   decoration: const InputDecoration(labelText: 'Structure', prefixIcon: Icon(Icons.domain, size: 18)),
                   items: widget.structures
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s.nom)))
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis)))
                       .toList(),
                   onChanged: _onStructureChanged,
                   validator: (v) => v == null ? 'Sélectionnez une structure' : null,
@@ -1000,29 +1281,33 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                 // Dropdown Service filtré dynamiquement
                 DropdownButtonFormField<Service>(
                   value: _selectedService,
+                  isExpanded: true,
+                  menuMaxHeight: 200,
                   decoration: const InputDecoration(labelText: 'Service', prefixIcon: Icon(Icons.miscellaneous_services, size: 18)),
-                  hint: Text(_loadingServices 
-                      ? 'Chargement des services...' 
+                  hint: Text(_loadingServices
+                      ? 'Chargement des services...'
                       : _selectedStructure == null
                           ? 'Choisissez d\'abord une structure'
                           : _filteredServices.isEmpty
                               ? 'Aucun service pour cette structure'
                               : 'Sélectionner un service'),
                   items: _filteredServices
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s.nom)))
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis)))
                       .toList(),
                   onChanged: _filteredServices.isEmpty ? null : (v) => setState(() => _selectedService = v),
                   validator: (v) => v == null ? 'Sélectionnez un service' : null,
                 ),
                 const SizedBox(height: 12),
 
-                DropdownButtonFormField<UserRole>(
-                  value: _selectedRole,
+                DropdownButtonFormField<String>(
+                  value: _selectedRoleNom,
+                  isExpanded: true,
+                  menuMaxHeight: 200,
                   decoration: const InputDecoration(labelText: 'Rôle', prefixIcon: Icon(Icons.shield_outlined, size: 18)),
-                  items: UserRole.values
-                      .map((r) => DropdownMenuItem(value: r, child: Text(r.label)))
+                  items: widget.roles
+                      .map((r) => DropdownMenuItem(value: r.nom, child: Text(_roleLabel(r.nom), overflow: TextOverflow.ellipsis)))
                       .toList(),
-                  onChanged: (v) => setState(() => _selectedRole = v),
+                  onChanged: (v) => setState(() => _selectedRoleNom = v),
                   validator: (v) => v == null ? 'Sélectionnez un rôle' : null,
                 ),
                 const SizedBox(height: 24),

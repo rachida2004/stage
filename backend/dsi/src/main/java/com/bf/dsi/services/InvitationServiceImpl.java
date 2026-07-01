@@ -8,7 +8,7 @@ import com.bf.dsi.repository.AffectationInvitationRepository;
 import com.bf.dsi.repository.InvitationRepository;
 import com.bf.dsi.repository.NotificationRepository;
 import com.bf.dsi.repository.UtilisateurRepository;
-import com.bf.dsi.services.AppSettingService; // 🎯 1. Importation du service de configuration
+import com.bf.dsi.services.AppSettingService; 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +25,7 @@ public class InvitationServiceImpl implements InvitationService {
     private final AffectationInvitationRepository affectationRepo;
     private final UtilisateurRepository utilisateurRepo;
     private final NotificationRepository notificationRepo;
-    private final AppSettingService appSettingService; // 🎯 2. Injection automatique grâce à @RequiredArgsConstructor
+    private final AppSettingService appSettingService; 
 
     @Override
     public Invitation affecterMembres(Long invId, List<Long> agentIds, Long responsableId) {

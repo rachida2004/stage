@@ -52,7 +52,11 @@ public class AuthController {
             "prenom", u.getPrenom() != null ? u.getPrenom() : "",
             "email", u.getEmail(),
             "role", u.getPrimaryRole().name(),
-            "initiales", u.getInitiales()
+            "initiales", u.getInitiales(),
+            // 🎯 Permissions agrégées de TOUS les rôles de l'utilisateur — permet
+            // au frontend d'afficher/cacher des actions sans connaître les noms
+            // de rôle eux-mêmes (ex: bouton "Affecter" visible si AFFECTER_AGENT).
+            "permissions", permissionsDe(u)
         ));
     }
 
@@ -86,8 +90,19 @@ public class AuthController {
             "prenom", u.getPrenom() != null ? u.getPrenom() : "",
             "email", u.getEmail(),
             "role", role.getNom(),
-            "initiales", u.getInitiales()
+            "initiales", u.getInitiales(),
+            "permissions", permissionsDe(u)
         ));
+    }
+
+    /** Permissions agrégées de tous les rôles de l'utilisateur (noms bruts, ex: "AFFECTER_AGENT"). */
+    private java.util.Set<String> permissionsDe(Utilisateur u) {
+        if (u.getRoles() == null) return java.util.Set.of();
+        return u.getRoles().stream()
+            .filter(r -> r.getPermissions() != null)
+            .flatMap(r -> r.getPermissions().stream())
+            .map(Enum::name)
+            .collect(java.util.stream.Collectors.toSet());
     }
 
     /**
