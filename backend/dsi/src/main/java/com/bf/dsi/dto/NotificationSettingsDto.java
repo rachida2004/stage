@@ -4,8 +4,8 @@ import lombok.Data;
 
 @Data
 public class NotificationSettingsDto {
-    private boolean emailEnabled;
-    private boolean internalEnabled;
+    private boolean notificationsEmail;
+    private boolean notificationsInternes;
     private String delaiMaxSansAffectation;
     private String langue;
 }

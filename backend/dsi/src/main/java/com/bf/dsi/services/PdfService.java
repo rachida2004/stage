@@ -31,7 +31,12 @@ public class PdfService {
             PdfWriter.getInstance(doc, out);
             doc.open();
 
-            // ── En-tête : structure émettrice (gauche) / logo (centre) / Burkina Faso (droite) ──
+            // ── Qualité du signataire (calculée ici pour être réutilisée dans l'en-tête et la signature) ──
+            String qualite = (inv.getSignataireQualite() != null && !inv.getSignataireQualite().isBlank())
+                ? inv.getSignataireQualite() : "Le Secrétaire général";
+            String ville = (inv.getVille() != null && !inv.getVille().isBlank()) ? inv.getVille() : "Ouagadougou";
+
+            // ── En-tête : structure émettrice (gauche) / logo (centre) / Burkina Faso + date + qualité (droite) ──
             PdfPTable entete = new PdfPTable(3);
             entete.setWidthPercentage(100);
             entete.setWidths(new float[]{3f, 1.3f, 2f});
@@ -47,6 +52,11 @@ public class PdfService {
             gaucheP.add(new Chunk("SECRETARIAT GENERAL\n\n", SMALL_B));
             gaucheP.add(new Chunk("--------------\n\n", SMALL));
             gaucheP.add(new Chunk("DIRECTION GENERALE DES SYSTEMES\nD'INFORMATION", SMALL_B));
+            String reference = (inv.getNumeroReference() != null && !inv.getNumeroReference().isBlank())
+                ? "N°" + inv.getNumeroReference() : "";
+            if (!reference.isBlank()) {
+                gaucheP.add(new Chunk("\n\n" + reference, SMALL));
+            }
 
             PdfPCell gauche = new PdfPCell(gaucheP);
             gauche.setBorder(Rectangle.NO_BORDER);
@@ -57,6 +67,7 @@ public class PdfService {
             celluleLogo.setBorder(Rectangle.NO_BORDER);
             celluleLogo.setHorizontalAlignment(Element.ALIGN_CENTER);
             celluleLogo.setVerticalAlignment(Element.ALIGN_TOP);
+            celluleLogo.setPaddingTop(28f); // 🎯 fait descendre le logo pour l'aligner visuellement avec le texte
             try {
                 Image logo = Image.getInstance(
                     getClass().getResourceAsStream("/images/logo.jpg").readAllBytes());
@@ -67,53 +78,50 @@ public class PdfService {
             }
             entete.addCell(celluleLogo);
 
-            Paragraph droite = new Paragraph();
-            droite.add(new Chunk("BURKINA FASO\n", SMALL_B));
-            droite.add(new Chunk("La Patrie ou la Mort, Nous vaincrons", ITALIC_SM));
-            droite.setAlignment(Element.ALIGN_RIGHT);
-            PdfPCell celluleDroite = new PdfPCell(droite);
+            // 🎯 "BURKINA FASO", "Ouagadougou, le ..." et la qualité du signataire
+            // sont maintenant regroupés dans le MÊME bloc droit, aligné avec le
+            // bloc ministère de gauche (même ligne de départ, pas de tableau
+            // séparé plus bas qui désalignait tout).
+            // 🎯 "BURKINA FASO", "Ouagadougou, le ...", la qualité du signataire,
+            // "À" et le destinataire sont regroupés dans le MÊME bloc droit,
+            // aligné avec le bloc ministère de gauche. Chaque ligne est un
+            // paragraphe séparé pour contrôler finement l'espacement, et "À"
+            // est légèrement décalé vers la gauche par rapport au reste.
+            PdfPCell celluleDroite = new PdfPCell();
             celluleDroite.setBorder(Rectangle.NO_BORDER);
             celluleDroite.setVerticalAlignment(Element.ALIGN_TOP);
+
+            Paragraph pBurkina = new Paragraph();
+            pBurkina.setAlignment(Element.ALIGN_RIGHT);
+            pBurkina.add(new Chunk("BURKINA FASO\n", SMALL_B));
+            pBurkina.add(new Chunk("La Patrie ou la Mort, Nous vaincrons", ITALIC_SM));
+            pBurkina.setSpacingAfter(10f);
+            celluleDroite.addElement(pBurkina);
+
+            Paragraph pDate = new Paragraph(ville + ", le " + java.time.LocalDate.now().format(FMT), NORMAL);
+            pDate.setAlignment(Element.ALIGN_RIGHT);
+            pDate.setSpacingAfter(10f);
+            celluleDroite.addElement(pDate);
+
+            Paragraph pQualite = new Paragraph(qualite, TITLE);
+            pQualite.setAlignment(Element.ALIGN_RIGHT);
+            pQualite.setSpacingAfter(2f);
+            celluleDroite.addElement(pQualite);
+
+            Paragraph pA = new Paragraph("À", NORMAL);
+            pA.setAlignment(Element.ALIGN_RIGHT);
+            pA.setIndentationRight(22f); // léger décalage vers la gauche
+            celluleDroite.addElement(pA);
+
+            Paragraph pDestinataire = new Paragraph(libelleDestinataire(inv), TITLE);
+            pDestinataire.setAlignment(Element.ALIGN_RIGHT);
+            celluleDroite.addElement(pDestinataire);
+
             entete.addCell(celluleDroite);
             doc.add(entete);
             doc.add(Chunk.NEWLINE);
-
-            // ── Référence (gauche) / Ville, date (droite) ──
-            PdfPTable refTable = new PdfPTable(2);
-            refTable.setWidthPercentage(100);
-            refTable.setWidths(new float[]{3f, 2f});
-
-            String reference = (inv.getNumeroReference() != null && !inv.getNumeroReference().isBlank())
-                ? "N°" + inv.getNumeroReference() : "";
-            PdfPCell celluleRef = new PdfPCell(new Phrase(reference, NORMAL));
-            celluleRef.setBorder(Rectangle.NO_BORDER);
-            refTable.addCell(celluleRef);
-
-            String ville = (inv.getVille() != null && !inv.getVille().isBlank()) ? inv.getVille() : "Ouagadougou";
-            Paragraph dateP = new Paragraph(ville + ", le " + java.time.LocalDate.now().format(FMT), NORMAL);
-            dateP.setAlignment(Element.ALIGN_RIGHT);
-            PdfPCell celluleDate = new PdfPCell(dateP);
-            celluleDate.setBorder(Rectangle.NO_BORDER);
-            refTable.addCell(celluleDate);
-            doc.add(refTable);
             doc.add(Chunk.NEWLINE);
-            doc.add(Chunk.NEWLINE);
-
-            // ── Qualité du signataire ──
-            String qualite = (inv.getSignataireQualite() != null && !inv.getSignataireQualite().isBlank())
-                ? inv.getSignataireQualite() : "Le Secrétaire général";
-            Paragraph pQualite = new Paragraph(qualite, TITLE);
-            pQualite.setAlignment(Element.ALIGN_CENTER);
-            doc.add(pQualite);
-
-            Paragraph aLabel = new Paragraph("À", NORMAL);
-            aLabel.setAlignment(Element.ALIGN_CENTER);
-            doc.add(aLabel);
-
-            Paragraph destinataire = new Paragraph(libelleDestinataire(inv), TITLE);
-            destinataire.setAlignment(Element.ALIGN_CENTER);
-            doc.add(destinataire);
-            doc.add(Chunk.NEWLINE);
+            doc.add(Chunk.NEWLINE); // 🎯 espace supplémentaire pour faire descendre "Objet"
 
             // ── Objet ──
             Paragraph objet = new Paragraph();
@@ -123,13 +131,21 @@ public class PdfService {
             doc.add(Chunk.NEWLINE);
 
             // ── Corps de la lettre ──
-            String corps = (inv.getContenu() != null && !inv.getContenu().isBlank())
-                ? inv.getContenu()
-                : corpsParDefaut(inv);
-            Paragraph body = new Paragraph(corps, NORMAL);
-            body.setAlignment(Element.ALIGN_JUSTIFIED);
-            body.setLeading(18);
-            doc.add(body);
+            // 🎯 Si un Delta Quill (mise en forme) est disponible, on le rend
+            // fidèlement (gras/italique/souligné/titres/listes/alignement).
+            // Sinon on retombe sur le texte brut comme avant.
+            List<QuillDeltaParser.Block> blocsCorps = QuillDeltaParser.parse(inv.getContenuDelta());
+            if (!blocsCorps.isEmpty()) {
+                ajouterCorpsEnrichi(doc, blocsCorps);
+            } else {
+                String corps = (inv.getContenu() != null && !inv.getContenu().isBlank())
+                    ? inv.getContenu()
+                    : corpsParDefaut(inv);
+                Paragraph body = new Paragraph(corps, NORMAL);
+                body.setAlignment(Element.ALIGN_JUSTIFIED);
+                body.setLeading(18);
+                doc.add(body);
+            }
             doc.add(Chunk.NEWLINE);
             doc.add(Chunk.NEWLINE);
 
@@ -153,7 +169,18 @@ public class PdfService {
 
             Paragraph ampliationP = new Paragraph();
             ampliationP.add(new Chunk("Ampliation\n", HEADING));
-            ampliationP.add(new Chunk(inv.getAmpliation() != null ? inv.getAmpliation() : "—", SMALL));
+            String ampliationBrute = inv.getAmpliation();
+            if (ampliationBrute != null && !ampliationBrute.isBlank()) {
+                String[] destinatairesAmpliation = ampliationBrute.split(";");
+                for (String dest : destinatairesAmpliation) {
+                    String d = dest.trim();
+                    if (!d.isEmpty()) {
+                        ampliationP.add(new Chunk("- " + d + "\n", SMALL));
+                    }
+                }
+            } else {
+                ampliationP.add(new Chunk("—", SMALL));
+            }
             PdfPCell celluleAmpliation = new PdfPCell(ampliationP);
             celluleAmpliation.setBorder(Rectangle.NO_BORDER);
             celluleAmpliation.setVerticalAlignment(Element.ALIGN_TOP);
@@ -176,6 +203,57 @@ public class PdfService {
         } catch (Exception e) {
             throw new RuntimeException("Erreur génération PDF: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Rend une liste de blocs (issus du Delta Quill) dans le document PDF,
+     * en respectant gras/italique/souligné/alignement/titres/listes.
+     */
+    private void ajouterCorpsEnrichi(Document doc, List<QuillDeltaParser.Block> blocs) throws DocumentException {
+        int compteurOrdonne = 0;
+        for (QuillDeltaParser.Block bloc : blocs) {
+            if (!"ordered".equals(bloc.listType)) compteurOrdonne = 0;
+
+            Paragraph p = new Paragraph();
+            p.setLeading(18);
+            p.setSpacingAfter(4f);
+
+            // Puce / numéro en préfixe du premier chunk du bloc
+            if ("bullet".equals(bloc.listType)) {
+                p.add(new Chunk("•  ", NORMAL));
+            } else if ("ordered".equals(bloc.listType)) {
+                compteurOrdonne++;
+                p.add(new Chunk(compteurOrdonne + ".  ", NORMAL));
+            }
+
+            for (QuillDeltaParser.Run run : bloc.runs) {
+                Font f = policePour(bloc.header, run.bold, run.italic, run.underline);
+                p.add(new Chunk(run.text, f));
+            }
+
+            switch (bloc.align) {
+                case "center":  p.setAlignment(Element.ALIGN_CENTER); break;
+                case "right":   p.setAlignment(Element.ALIGN_RIGHT); break;
+                case "justify": p.setAlignment(Element.ALIGN_JUSTIFIED); break;
+                default:        p.setAlignment(Element.ALIGN_LEFT);
+            }
+
+            doc.add(p);
+        }
+    }
+
+    /** Choisit la police iText en fonction du titre (header 1-3) et des styles inline. */
+    private Font policePour(Integer header, boolean bold, boolean italic, boolean underline) {
+        float taille = 11f;
+        int style = Font.NORMAL;
+        if (header != null) {
+            bold = true; // les titres sont toujours en gras
+            taille = header == 1 ? 16f : header == 2 ? 14f : 12.5f;
+        }
+        if (bold) style |= Font.BOLD;
+        if (italic) style |= Font.ITALIC;
+        if (underline) style |= Font.UNDERLINE;
+        return new Font(Font.FontFamily.HELVETICA, taille, style);
     }
 
     private String libelleDestinataire(Invitation inv) {

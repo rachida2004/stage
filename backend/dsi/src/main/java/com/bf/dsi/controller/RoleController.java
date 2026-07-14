@@ -77,7 +77,7 @@ public class RoleController {
 
     /**
      * Remplace l'ensemble des permissions d'un rôle.
-     * Body attendu : { "permissions": ["GERER_INVITATIONS", "AFFECTER_AGENT"] }
+     * Body attendu : { "permissions": ["ENREGISTRER_INVITATION", "AFFECTER_TICKET"] }
      * Les chaînes ne correspondant à aucune valeur de l'enum Permission sont
      * ignorées silencieusement (évite un 500 si le frontend envoie un nom obsolète).
      */

@@ -98,8 +98,8 @@ public class AdminController {
     @PostMapping("/settings")
     @Transactional
     public ResponseEntity<?> saveSettings(@RequestBody NotificationSettingsDto dto) {
-        saveOrUpdateSetting("notificationsEmail", String.valueOf(dto.isEmailEnabled()));
-        saveOrUpdateSetting("notificationsInternes", String.valueOf(dto.isInternalEnabled()));
+        saveOrUpdateSetting("notificationsEmail", String.valueOf(dto.isNotificationsEmail()));
+        saveOrUpdateSetting("notificationsInternes", String.valueOf(dto.isNotificationsInternes()));
         saveOrUpdateSetting("delaiMaxSansAffectation", dto.getDelaiMaxSansAffectation());
         if (dto.getLangue() != null) {
             saveOrUpdateSetting("langue", dto.getLangue());

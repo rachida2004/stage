@@ -21,6 +21,7 @@ public class InvitationRequest {
     private String numeroReference;
     private String ville;
     private String contenu;
+    private String contenuDelta; // JSON Delta flutter_quill (mise en forme du corps de la lettre)
     private String ampliation;
     private String signataireNom;
     private String signataireQualite;

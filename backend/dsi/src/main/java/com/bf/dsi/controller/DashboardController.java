@@ -23,13 +23,27 @@ public class DashboardController {
             // pas comptabilisées sur le tableau de bord — seules celles créées
             // via "Enregistrer" entrent dans ces statistiques.
             final String mode = "ENREGISTRER";
+
+            // 🎯 On recalcule le statut de chaque invitation à la volée
+            // (calculerStatutAutomatique()) au lieu de compter sur la colonne
+            // "statut" stockée en base, qui ne se met à jour qu'au moment d'une
+            // affectation d'agent et peut devenir obsolète (ex: date de fin
+            // dépassée depuis sans nouvelle affectation) — pour que les
+            // compteurs du tableau de bord correspondent toujours à ce qui est
+            // affiché dans la liste des invitations.
+            List<com.bf.dsi.entity.Invitation> toutes = invitationRepo.findByModeCreation(mode);
+            Map<StatutInvitation, Long> parStatut = toutes.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                    com.bf.dsi.entity.Invitation::calculerStatutAutomatique,
+                    java.util.stream.Collectors.counting()));
+
             Map<String, Object> stats = new LinkedHashMap<>();
-            stats.put("totalInvitations",       invitationRepo.countByModeCreation(mode));
-            stats.put("invitationsEnAttente",   invitationRepo.countByStatutAndModeCreation(StatutInvitation.EN_ATTENTE, mode));
-            stats.put("invitationsPlanifiees",  invitationRepo.countByStatutAndModeCreation(StatutInvitation.PLANIFIEE, mode));
-            stats.put("invitationsEnCours",     invitationRepo.countByStatutAndModeCreation(StatutInvitation.EN_COURS, mode));
-            stats.put("invitationsTerminees",   invitationRepo.countByStatutAndModeCreation(StatutInvitation.TERMINEE, mode));
-            stats.put("invitationsNonTraitees", invitationRepo.countByStatutAndModeCreation(StatutInvitation.NON_TRAITEE, mode));
+            stats.put("totalInvitations",       toutes.size());
+            stats.put("invitationsEnAttente",   parStatut.getOrDefault(StatutInvitation.EN_ATTENTE, 0L));
+            stats.put("invitationsPlanifiees",  parStatut.getOrDefault(StatutInvitation.PLANIFIEE, 0L));
+            stats.put("invitationsEnCours",     parStatut.getOrDefault(StatutInvitation.EN_COURS, 0L));
+            stats.put("invitationsTerminees",   parStatut.getOrDefault(StatutInvitation.TERMINEE, 0L));
+            stats.put("invitationsNonTraitees", parStatut.getOrDefault(StatutInvitation.NON_TRAITEE, 0L));
             stats.put("totalTickets",           ticketRepo.count());
             stats.put("ticketsOuverts",         ticketRepo.countByStatutNot(StatutTicket.FERME));
             stats.put("totalUsers",             utilisateurRepo.count());
@@ -58,7 +72,7 @@ public class DashboardController {
                 "structureEmettrice", i.getStructureEmettrice() != null ? i.getStructureEmettrice().getNom() : "",
                 "dateDebut", i.getDateDebut(),
                 "dateFin", i.getDateFin(),
-                "status", i.getStatut(),
+                "status", i.calculerStatutAutomatique(),
                 "nombreParticipants", i.getNombreParticipant() != null ? i.getNombreParticipant() : 0
             )).toList());
         } catch (Exception e) {
@@ -70,7 +84,7 @@ public class DashboardController {
     public ResponseEntity<?> getRecentTickets() {
         try {
             Page<com.bf.dsi.entity.Ticket> page = ticketRepo.findAllFiltered(
-                null, null, null, PageRequest.of(0, 5, Sort.by("dateCreation").descending()));
+                null, null, null, null, PageRequest.of(0, 5, Sort.by("dateCreation").descending()));
             return ResponseEntity.ok(page.getContent().stream().map(t -> Map.of(
                 "id", t.getId(),
                 "description", t.getDescription(),

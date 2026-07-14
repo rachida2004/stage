@@ -27,7 +27,7 @@ public class UserDetailsServiceConfig {
                 // 🎯 Système de permissions dynamique : on accorde toujours le nom du
                 // rôle "primaire" (compat historique, ex: "ADMIN") ET, en plus, toutes
                 // les permissions explicitement cochées sur CHACUN des rôles de
-                // l'utilisateur (ex: "GERER_INVITATIONS", "AFFECTER_AGENT"). Ainsi, un
+                // l'utilisateur (ex: "ENREGISTRER_INVITATION", "AFFECTER_TICKET"). Ainsi, un
                 // nouveau rôle créé depuis l'écran Admin obtient de vrais droits dès
                 // qu'on lui coche des permissions — sans toucher au code Java.
                 .authorities(autorites(u))

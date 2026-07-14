@@ -48,6 +48,13 @@ public class Invitation {
     @Column(name = "date_creation")
     private LocalDateTime dateCreation;
 
+    // 🎯 Passe à true dès qu'une alerte "délai max sans affectation" a été
+    // envoyée pour cette invitation, afin de ne pas la renvoyer à chaque
+    // exécution de la tâche planifiée.
+    @Builder.Default
+    @Column(name = "alerte_delai_envoyee")
+    private Boolean alerteDelaiEnvoyee = false;
+
     // ── Champs spécifiques à la lettre officielle (format ministère) ──────
     @Column(name = "numero_reference")
     private String numeroReference;
@@ -58,6 +65,13 @@ public class Invitation {
 
     @Column(name = "contenu", columnDefinition = "TEXT")
     private String contenu;
+
+    // 🎯 JSON du Delta flutter_quill (gras, italique, souligné, listes...)
+    // du corps de la lettre. `contenu` reste le texte brut (compat/recherche/
+    // fallback) ; `contenuDelta`, quand présent, est LA source de vérité
+    // pour le rendu enrichi dans les exports PDF/Word.
+    @Column(name = "contenu_delta", columnDefinition = "TEXT")
+    private String contenuDelta;
 
     @Column(name = "ampliation")
     private String ampliation;
@@ -90,33 +104,45 @@ public class Invitation {
         if (dateCreation == null) dateCreation = LocalDateTime.now();
     }
     public StatutInvitation calculerStatutAutomatique() {
+    // 🎯 Cette formule (En attente / Planifiée / En cours / Terminée / Non traitée)
+    // ne s'applique qu'aux invitations en mode "ENREGISTRER" (formulaire rapide).
+    // Les invitations "CREER" (lettre officielle) suivent leur propre statut,
+    // piloté par les réponses de chaque structure invitée (Excusée/Confirmée/En attente),
+    // donc on ne le recalcule pas ici pour ne pas l'écraser.
+    if (!"ENREGISTRER".equalsIgnoreCase(this.getModeCreation())) {
+        return this.getStatut();
+    }
+
     LocalDate aujourdhui = LocalDate.now();
     boolean aDesAgents = this.getAffectations() != null && !this.getAffectations().isEmpty();
     
-    // Cas 1 : La date de fin est dépassée
+    // Cas 1 : La date de fin est dépassée (priorité la plus haute)
     if (aujourdhui.isAfter(this.getDateFin())) {
-        if (aDesAgents) {
-            return StatutInvitation.TERMINEE;
-        } else {
-            return StatutInvitation.NON_TRAITEE;
-        }
+        return aDesAgents ? StatutInvitation.TERMINEE : StatutInvitation.NON_TRAITEE;
     }
-    
-    // Cas 2 : La date actuelle est dans l'intervalle [dateDebut, dateFin]
-    // (aujourdhui >= dateDebut ET aujourdhui <= dateFin)
+
+    // Cas 2 : Tant qu'aucun agent n'est affecté, l'invitation reste "En attente" —
+    // même si la date de début est déjà aujourd'hui ou dans l'intervalle.
+    // (Sans ça, une invitation tout juste créée avec une date de début = aujourd'hui
+    // passait directement en "En cours" sans jamais avoir été "En attente".)
+    if (!aDesAgents) {
+        return StatutInvitation.EN_ATTENTE;
+    }
+
+    // À partir d'ici, un ou plusieurs agents sont affectés et la date de fin
+    // n'est pas dépassée.
+
+    // Cas 3 : La date actuelle est dans l'intervalle [dateDebut, dateFin]
     if (!aujourdhui.isBefore(this.getDateDebut()) && !aujourdhui.isAfter(this.getDateFin())) {
         return StatutInvitation.EN_COURS;
     }
-    
-    // Cas 3 : La date actuelle est avant la date de début (Événement futur)
+
+    // Cas 4 : La date actuelle est avant la date de début (agent déjà affecté,
+    // événement futur)
     if (aujourdhui.isBefore(this.getDateDebut())) {
-        if (aDesAgents) {
-            return StatutInvitation.PLANIFIEE;
-        } else {
-            return StatutInvitation.EN_ATTENTE;
-        }
+        return StatutInvitation.PLANIFIEE;
     }
-    
+
     // Par sécurité, on retourne le statut actuel par défaut
     return this.getStatut();
 }

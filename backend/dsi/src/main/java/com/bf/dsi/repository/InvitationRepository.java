@@ -37,8 +37,25 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
     long countByModeCreation(String modeCreation);
     long countByStatutAndModeCreation(StatutInvitation statut, String modeCreation);
 
+    // 🎯 Utilisée par le tableau de bord pour recalculer les statuts à la
+    // volée (calculerStatutAutomatique()) plutôt que de compter sur la colonne
+    // "statut" stockée, qui ne se met à jour qu'au moment d'une affectation
+    // et peut donc devenir obsolète avec le temps (ex: date de fin dépassée
+    // depuis, sans nouvelle affectation).
+    java.util.List<Invitation> findByModeCreation(String modeCreation);
+
     // 🎯 Filtrage par mode de création : "CREER" → page Reçu, "ENREGISTRER" → page Envoyer
     /*Page<Invitation> findByModeCreation(String modeCreation, Pageable pageable);*/
+
+    // 🎯 Invitations sans aucun agent affecté, créées avant le seuil donné,
+    // et pour lesquelles aucune alerte de dépassement de délai n'a encore été envoyée.
+    @Query("""
+        SELECT i FROM Invitation i
+        WHERE i.affectations IS EMPTY
+        AND i.alerteDelaiEnvoyee = false
+        AND i.dateCreation <= :seuil
+        """)
+    List<Invitation> findEnRetardNonAlertees(@Param("seuil") java.time.LocalDateTime seuil);
 
     // 🎯 Invitations "reçues" : celles où la structure de l'utilisateur connecté
     // figure parmi les structures invitées (table structure_invitee).

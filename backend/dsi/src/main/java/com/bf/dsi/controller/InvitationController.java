@@ -9,6 +9,7 @@ import com.bf.dsi.services.InvitationService;
 import com.bf.dsi.services.PdfService;
 import com.bf.dsi.services.WordService;
 import com.bf.dsi.services.AppSettingService;
+import com.bf.dsi.services.EmailService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class InvitationController {
     private final UtilisateurRepository utilisateurRepo;
     private final NotificationRepository notificationRepo;
     private final AppSettingService appSettingService;
+    private final EmailService emailService;
 
     @lombok.Data
     public static class AffectationRequest {
@@ -107,6 +109,7 @@ public class InvitationController {
             .numeroReference(req.getNumeroReference())
             .ville(req.getVille() != null ? req.getVille() : "Ouagadougou")
             .contenu(req.getContenu())
+            .contenuDelta(req.getContenuDelta())
             .ampliation(req.getAmpliation())
             .signataireNom(req.getSignataireNom())
             .signataireQualite(req.getSignataireQualite())
@@ -137,6 +140,7 @@ public class InvitationController {
             @RequestParam(required = false) String numeroReference,
             @RequestParam(required = false) String ville,
             @RequestParam(required = false) String contenu,
+            @RequestParam(required = false) String contenuDelta,
             @RequestParam(required = false) String ampliation,
             @RequestParam(required = false) String signataireNom,
             @RequestParam(required = false) String signataireQualite,
@@ -165,6 +169,7 @@ public class InvitationController {
             .numeroReference(numeroReference)
             .ville(ville != null && !ville.trim().isEmpty() ? ville : "Ouagadougou")
             .contenu(contenu)
+            .contenuDelta(contenuDelta)
             .ampliation(ampliation)
             .signataireNom(signataireNom)
             .signataireQualite(signataireQualite)
@@ -222,6 +227,7 @@ public class InvitationController {
             if (req.getNumeroReference() != null) inv.setNumeroReference(req.getNumeroReference());
             if (req.getVille() != null) inv.setVille(req.getVille());
             if (req.getContenu() != null) inv.setContenu(req.getContenu());
+            if (req.getContenuDelta() != null) inv.setContenuDelta(req.getContenuDelta());
             if (req.getAmpliation() != null) inv.setAmpliation(req.getAmpliation());
             if (req.getSignataireNom() != null) inv.setSignataireNom(req.getSignataireNom());
             if (req.getSignataireQualite() != null) inv.setSignataireQualite(req.getSignataireQualite());
@@ -280,7 +286,21 @@ public class InvitationController {
     }
 
     @PostMapping("/{invId}/affecter")
-    public ResponseEntity<?> affecterMembres(@PathVariable Long invId, @RequestBody AffectationRequest req) {
+    public ResponseEntity<?> affecterMembres(
+            @PathVariable Long invId,
+            @RequestBody AffectationRequest req,
+            Authentication authentication) {
+
+        // 🎯 Affectation réservée à ADMIN et SECRETAIRE — un agent n'a pas le
+        // droit d'affecter (ni lui-même ni un collègue) une invitation.
+        Utilisateur demandeur = currentUser(authentication);
+        boolean autorise = demandeur != null && demandeur.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equals(r.getNom()) || "SECRETAIRE".equals(r.getNom()));
+        if (!autorise) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Seuls un administrateur ou un secrétaire peuvent affecter un agent."));
+        }
+
         Invitation invMiseAJour = invitationService.affecterMembres(invId, req.getAgentIds(), req.getResponsableId());
         return ResponseEntity.ok(toDto(invMiseAJour));
     }
@@ -303,6 +323,11 @@ public class InvitationController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
+        // 🎯 On purge d'abord les notifications liées à cette invitation
+        // (catégorie "INVITATION", resourceId = id), sinon elles restent
+        // "fantômes" dans les Alertes et pointent vers une ressource qui
+        // n'existe plus. @Transactional est déjà présent au niveau classe.
+        notificationRepo.deleteByCategorieAndResourceId("INVITATION", id.toString());
         invitationRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Invitation supprimée"));
     }
@@ -414,16 +439,41 @@ public class InvitationController {
     /** Notifie les ADMIN et AGENT_DSI quand une invitation est enregistrée (mode rapide ENREGISTRER). */
     private void notifierInvitationEnregistree(Invitation inv) {
         if (!"ENREGISTRER".equalsIgnoreCase(inv.getModeCreation())) return;
-        if (!appSettingService.isInternalNotificationEnabled()) return;
 
-        Map<Long, Utilisateur> destinataires = new LinkedHashMap<>();
-        utilisateurRepo.findByRoles_Nom("ADMIN").forEach(u -> destinataires.put(u.getUserId(), u));
-        utilisateurRepo.findByRoles_Nom("AGENT_DSI").forEach(u -> destinataires.put(u.getUserId(), u));
+        boolean interneOn = appSettingService.isInternalNotificationEnabled();
+        boolean emailOn   = appSettingService.isEmailNotificationEnabled();
+        if (!interneOn && !emailOn) return;
 
-        destinataires.values().forEach(u -> notificationRepo.save(Notification.builder()
-            .message("Nouvelle invitation enregistrée : " + inv.getObjet())
-            .categorie("INVITATION").actionLabel("Voir").resourceId(inv.getId().toString())
-            .utilisateur(u).build()));
+        // Notification interne (cloche) : ADMIN uniquement (pas les agents,
+        // qui n'ont pas à être notifiés d'une invitation tant qu'ils n'y
+        // sont pas affectés).
+        Map<Long, Utilisateur> destinatairesInterne = new LinkedHashMap<>();
+        utilisateurRepo.findByRoles_Nom("ADMIN").forEach(u -> destinatairesInterne.put(u.getUserId(), u));
+
+        // Email : ADMIN + SECRETAIRE, cohérent avec le comportement des tickets.
+        Map<Long, Utilisateur> destinatairesEmail = new LinkedHashMap<>();
+        utilisateurRepo.findByRoles_Nom("ADMIN").forEach(u -> destinatairesEmail.put(u.getUserId(), u));
+        utilisateurRepo.findByRoles_Nom("SECRETAIRE").forEach(u -> destinatairesEmail.put(u.getUserId(), u));
+
+        if (interneOn) {
+            destinatairesInterne.values().forEach(u -> notificationRepo.save(Notification.builder()
+                .message("Nouvelle invitation enregistrée : " + inv.getObjet())
+                .categorie("INVITATION").actionLabel("Voir").resourceId(inv.getId().toString())
+                .utilisateur(u).build()));
+        }
+
+        if (emailOn) {
+            destinatairesEmail.values().forEach(u -> {
+                if (u.getEmail() != null) {
+                    emailService.envoyerNotification(
+                        u.getEmail(),
+                        "DSI Connect — Nouvelle invitation",
+                        "Une nouvelle invitation a été enregistrée : " + inv.getObjet()
+                            + "\n\nConnectez-vous à DSI Connect pour la consulter."
+                    );
+                }
+            });
+        }
     }
 
     private Map<String, Object> toDto(Invitation i) {
@@ -442,6 +492,7 @@ public class InvitationController {
         m.put("numeroReference", i.getNumeroReference());
         m.put("ville", i.getVille());
         m.put("contenu", i.getContenu());
+        m.put("contenuDelta", i.getContenuDelta());
         m.put("ampliation", i.getAmpliation());
         m.put("signataireNom", i.getSignataireNom());
         m.put("signataireQualite", i.getSignataireQualite());

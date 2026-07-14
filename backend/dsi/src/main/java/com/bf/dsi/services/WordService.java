@@ -76,8 +76,19 @@ public class WordService {
             ligne3b.setBold(true);
             ligne3b.setFontSize(11);
 
+            String reference = (inv.getNumeroReference() != null && !inv.getNumeroReference().isBlank())
+                ? "N°" + inv.getNumeroReference() : "";
+            if (!reference.isBlank()) {
+                ligne3b.addBreak();
+                ligne3b.addBreak();
+                XWPFRun refRun = pGauche.createRun();
+                refRun.setText(reference);
+                refRun.setFontSize(9);
+            }
+
             XWPFTableCell celluleLogo = enteteTable.getRow(0).getCell(1);
             celluleLogo.removeParagraph(0);
+            celluleLogo.addParagraph(); // 🎯 espace vide pour faire descendre le logo
             XWPFParagraph pLogo = celluleLogo.addParagraph();
             pLogo.setAlignment(ParagraphAlignment.CENTER);
             XWPFRun runLogo = pLogo.createRun();
@@ -90,10 +101,21 @@ public class WordService {
                 // si le logo est introuvable, on n'interrompt pas la génération du document
             }
 
+            // 🎯 "BURKINA FASO", "Ouagadougou, le ...", la qualité du signataire,
+            // "À" et le destinataire sont regroupés dans le MÊME bloc droit,
+            // aligné avec le bloc ministère de gauche. Chaque ligne est un
+            // paragraphe séparé pour contrôler finement l'espacement, et "À"
+            // est légèrement décalé vers la gauche par rapport au reste.
+            String qualite = (inv.getSignataireQualite() != null && !inv.getSignataireQualite().isBlank())
+                ? inv.getSignataireQualite() : "Le Secrétaire général";
+            String ville = (inv.getVille() != null && !inv.getVille().isBlank()) ? inv.getVille() : "Ouagadougou";
+
             XWPFTableCell celluleDroite = enteteTable.getRow(0).getCell(2);
             celluleDroite.removeParagraph(0);
+
             XWPFParagraph burkina = celluleDroite.addParagraph();
             burkina.setAlignment(ParagraphAlignment.RIGHT);
+            burkina.setSpacingAfter(140);
             XWPFRun burkinaRun = burkina.createRun();
             burkinaRun.setText("BURKINA FASO");
             burkinaRun.setBold(true);
@@ -103,44 +125,31 @@ public class WordService {
             motto.setItalic(true);
             motto.setFontSize(9);
 
-            document.createParagraph(); // espace
-
-            // ── Référence / date ──
-            XWPFParagraph refP = document.createParagraph();
-            XWPFRun refRun = refP.createRun();
-            String reference = (inv.getNumeroReference() != null && !inv.getNumeroReference().isBlank())
-                ? "N°" + inv.getNumeroReference() : "";
-            refRun.setText(reference);
-
-            XWPFParagraph dateP = document.createParagraph();
+            XWPFParagraph dateP = celluleDroite.addParagraph();
             dateP.setAlignment(ParagraphAlignment.RIGHT);
-            XWPFRun dateRun = dateP.createRun();
-            String ville = (inv.getVille() != null && !inv.getVille().isBlank()) ? inv.getVille() : "Ouagadougou";
-            dateRun.setText(ville + ", le " + java.time.LocalDate.now().format(FMT));
+            dateP.setSpacingAfter(140);
+            dateP.createRun().setText(ville + ", le " + java.time.LocalDate.now().format(FMT));
 
-            document.createParagraph();
-
-            // ── Qualité du signataire / destinataire ──
-            String qualite = (inv.getSignataireQualite() != null && !inv.getSignataireQualite().isBlank())
-                ? inv.getSignataireQualite() : "Le Secrétaire général";
-
-            XWPFParagraph qualiteP = document.createParagraph();
-            qualiteP.setAlignment(ParagraphAlignment.CENTER);
+            XWPFParagraph qualiteP = celluleDroite.addParagraph();
+            qualiteP.setAlignment(ParagraphAlignment.RIGHT);
+            qualiteP.setSpacingAfter(30);
             XWPFRun qualiteRun = qualiteP.createRun();
             qualiteRun.setText(qualite);
             qualiteRun.setBold(true);
 
-            XWPFParagraph aP = document.createParagraph();
-            aP.setAlignment(ParagraphAlignment.CENTER);
+            XWPFParagraph aP = celluleDroite.addParagraph();
+            aP.setAlignment(ParagraphAlignment.RIGHT);
+            aP.setIndentationRight(440); // léger décalage vers la gauche (twips)
             aP.createRun().setText("À");
 
-            XWPFParagraph destP = document.createParagraph();
-            destP.setAlignment(ParagraphAlignment.CENTER);
+            XWPFParagraph destP = celluleDroite.addParagraph();
+            destP.setAlignment(ParagraphAlignment.RIGHT);
             XWPFRun destRun = destP.createRun();
             destRun.setText(libelleDestinataire(inv));
             destRun.setBold(true);
 
             document.createParagraph();
+            document.createParagraph(); // 🎯 espace supplémentaire pour faire descendre "Objet"
 
             // ── Objet ──
             XWPFParagraph objetP = document.createParagraph();
@@ -152,13 +161,21 @@ public class WordService {
             document.createParagraph();
 
             // ── Corps ──
-            String corps = (inv.getContenu() != null && !inv.getContenu().isBlank())
-                ? inv.getContenu()
-                : corpsParDefaut(inv);
-            for (String ligne : corps.split("\\R")) {
-                XWPFParagraph p = document.createParagraph();
-                p.setAlignment(ParagraphAlignment.BOTH);
-                p.createRun().setText(ligne);
+            // 🎯 Si un Delta Quill (mise en forme) est disponible, on le rend
+            // fidèlement (gras/italique/souligné/titres/listes/alignement).
+            // Sinon on retombe sur le texte brut comme avant.
+            List<QuillDeltaParser.Block> blocsCorps = QuillDeltaParser.parse(inv.getContenuDelta());
+            if (!blocsCorps.isEmpty()) {
+                ajouterCorpsEnrichi(document, blocsCorps);
+            } else {
+                String corps = (inv.getContenu() != null && !inv.getContenu().isBlank())
+                    ? inv.getContenu()
+                    : corpsParDefaut(inv);
+                for (String ligne : corps.split("\\R")) {
+                    XWPFParagraph p = document.createParagraph();
+                    p.setAlignment(ParagraphAlignment.BOTH);
+                    p.createRun().setText(ligne);
+                }
             }
 
             document.createParagraph();
@@ -182,7 +199,22 @@ public class WordService {
             ampRun.setText("Ampliation");
             ampRun.setBold(true);
             XWPFParagraph ampliationValeur = document.createParagraph();
-            ampliationValeur.createRun().setText(inv.getAmpliation() != null ? inv.getAmpliation() : "—");
+            XWPFRun ampValeurRun = ampliationValeur.createRun();
+            String ampliationBrute = inv.getAmpliation();
+            if (ampliationBrute != null && !ampliationBrute.isBlank()) {
+                String[] destinatairesAmpliation = ampliationBrute.split(";");
+                boolean premiereLigne = true;
+                for (String dest : destinatairesAmpliation) {
+                    String d = dest.trim();
+                    if (!d.isEmpty()) {
+                        if (!premiereLigne) ampValeurRun.addBreak();
+                        ampValeurRun.setText("- " + d);
+                        premiereLigne = false;
+                    }
+                }
+            } else {
+                ampValeurRun.setText("—");
+            }
 
             // ── Signature ──
             XWPFParagraph signatureP = document.createParagraph();
@@ -204,6 +236,47 @@ public class WordService {
 
         } catch (IOException e) {
             throw new RuntimeException("Erreur lors de la génération du document Word", e);
+        }
+    }
+
+    /**
+     * Rend une liste de blocs (issus du Delta Quill) dans le document Word,
+     * en respectant gras/italique/souligné/alignement/titres/listes.
+     */
+    private void ajouterCorpsEnrichi(XWPFDocument document, List<QuillDeltaParser.Block> blocs) {
+        int compteurOrdonne = 0;
+        for (QuillDeltaParser.Block bloc : blocs) {
+            if (!"ordered".equals(bloc.listType)) compteurOrdonne = 0;
+
+            XWPFParagraph p = document.createParagraph();
+            switch (bloc.align) {
+                case "center":  p.setAlignment(ParagraphAlignment.CENTER); break;
+                case "right":   p.setAlignment(ParagraphAlignment.RIGHT); break;
+                case "justify": p.setAlignment(ParagraphAlignment.BOTH); break;
+                default:        p.setAlignment(ParagraphAlignment.LEFT);
+            }
+
+            if ("bullet".equals(bloc.listType)) {
+                p.createRun().setText("•  ");
+            } else if ("ordered".equals(bloc.listType)) {
+                compteurOrdonne++;
+                p.createRun().setText(compteurOrdonne + ".  ");
+            }
+
+            for (QuillDeltaParser.Run run : bloc.runs) {
+                XWPFRun r = p.createRun();
+                r.setText(run.text);
+                boolean bold = run.bold;
+                double taille = 11;
+                if (bloc.header != null) {
+                    bold = true; // les titres sont toujours en gras
+                    taille = bloc.header == 1 ? 16 : bloc.header == 2 ? 14 : 12.5;
+                }
+                r.setBold(bold);
+                r.setItalic(run.italic);
+                if (run.underline) r.setUnderline(UnderlinePatterns.SINGLE);
+                r.setFontSize((int) taille);
+            }
         }
     }
 

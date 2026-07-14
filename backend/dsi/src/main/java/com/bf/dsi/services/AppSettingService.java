@@ -14,7 +14,7 @@ public class AppSettingService {
      * Vérifie si les notifications par email sont activées globalement.
      */
     public boolean isEmailNotificationEnabled() {
-        return appSettingRepository.findById("settings_notif_email")
+        return appSettingRepository.findById("notificationsEmail")
                 .map(setting -> Boolean.parseBoolean(setting.getValeur()))
                 .orElse(true); // true par défaut si la clé n'existe pas encore
     }
@@ -23,7 +23,7 @@ public class AppSettingService {
      * Vérifie si les notifications internes (Alertes) sont activées globalement.
      */
     public boolean isInternalNotificationEnabled() {
-        return appSettingRepository.findById("settings_notif_interne")
+        return appSettingRepository.findById("notificationsInternes")
                 .map(setting -> Boolean.parseBoolean(setting.getValeur()))
                 .orElse(true); // true par défaut
     }
@@ -32,7 +32,7 @@ public class AppSettingService {
      * Récupère la valeur du délai maximum sans affectation (ex: "48h", "72h").
      */
     public String getDelaiMaxSansAffectation() {
-        return appSettingRepository.findById("settings_delai")
+        return appSettingRepository.findById("delaiMaxSansAffectation")
                 .map(setting -> setting.getValeur())
                 .orElse("48h"); // "48h" par défaut
     }

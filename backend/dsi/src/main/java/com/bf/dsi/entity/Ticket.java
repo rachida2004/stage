@@ -25,6 +25,13 @@ public class Ticket {
     @Column(name = "date_creation")
     private LocalDateTime dateCreation;
 
+    // 🎯 Passe à true dès qu'une alerte "délai max sans affectation" a été
+    // envoyée pour ce ticket, afin de ne pas la renvoyer à chaque exécution
+    // de la tâche planifiée.
+    @Builder.Default
+    @Column(name = "alerte_delai_envoyee")
+    private Boolean alerteDelaiEnvoyee = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "statut")
     @Builder.Default

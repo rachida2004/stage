@@ -55,7 +55,7 @@ public class AuthController {
             "initiales", u.getInitiales(),
             // 🎯 Permissions agrégées de TOUS les rôles de l'utilisateur — permet
             // au frontend d'afficher/cacher des actions sans connaître les noms
-            // de rôle eux-mêmes (ex: bouton "Affecter" visible si AFFECTER_AGENT).
+            // de rôle eux-mêmes (ex: bouton "Affecter" visible si AFFECTER_TICKET).
             "permissions", permissionsDe(u)
         ));
     }
@@ -63,6 +63,12 @@ public class AuthController {
     @SuppressWarnings("null")
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest req) {
+        if (req.getNom() == null || req.getNom().isBlank())
+            return ResponseEntity.badRequest().body(Map.of("error", "Le nom est requis"));
+        if (req.getPrenom() == null || req.getPrenom().isBlank())
+            return ResponseEntity.badRequest().body(Map.of("error", "Le prénom est requis"));
+        if (req.getEmail() == null || req.getEmail().isBlank())
+            return ResponseEntity.badRequest().body(Map.of("error", "L'email est requis"));
         if (utilisateurRepo.existsByEmail(req.getEmail()))
             return ResponseEntity.badRequest().body(Map.of("error", "Email déjà utilisé"));
 
@@ -95,7 +101,7 @@ public class AuthController {
         ));
     }
 
-    /** Permissions agrégées de tous les rôles de l'utilisateur (noms bruts, ex: "AFFECTER_AGENT"). */
+    /** Permissions agrégées de tous les rôles de l'utilisateur (noms bruts, ex: "AFFECTER_TICKET"). */
     private java.util.Set<String> permissionsDe(Utilisateur u) {
         if (u.getRoles() == null) return java.util.Set.of();
         return u.getRoles().stream()

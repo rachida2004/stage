@@ -25,7 +25,8 @@ public class InvitationServiceImpl implements InvitationService {
     private final AffectationInvitationRepository affectationRepo;
     private final UtilisateurRepository utilisateurRepo;
     private final NotificationRepository notificationRepo;
-    private final AppSettingService appSettingService; 
+    private final AppSettingService appSettingService;
+    private final EmailService emailService;
 
     @Override
     public Invitation affecterMembres(Long invId, List<Long> agentIds, Long responsableId) {
@@ -60,12 +61,13 @@ public class InvitationServiceImpl implements InvitationService {
                 affectationRepo.save(aff);
                 inv.getAffectations().add(aff);
 
+                // Message commun aux deux canaux (interne + email)
+                String messageNotif = estResponsable
+                    ? "⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : " + inv.getObjet()
+                    : "Vous avez été affecté à l'invitation : " + inv.getObjet();
+
                 // 🎯 3. Condition : On vérifie si l'admin a coché "Notifications internes"
                 if (appSettingService.isInternalNotificationEnabled()) {
-                    String messageNotif = estResponsable 
-                        ? "⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : " + inv.getObjet()
-                        : "Vous avez été affecté à l'invitation : " + inv.getObjet();
-
                     Notification notif = Notification.builder()
                         .message(messageNotif)
                         .categorie("INVITATION")
@@ -78,10 +80,12 @@ public class InvitationServiceImpl implements InvitationService {
                 }
 
                 // 🎯 4. Condition : On vérifie si l'admin a coché "Notifications par email"
-                if (appSettingService.isEmailNotificationEnabled()) {
-                    // Si tu branches ton service mail plus tard, le déclenchement se fera ici
-                    // emailService.sendInvitationMail(agent, inv, estResponsable);
-                    System.out.println("LOG EMAIL : Notification par courriel pour l'agent ID " + agentId);
+                if (appSettingService.isEmailNotificationEnabled() && agent.getEmail() != null) {
+                    emailService.envoyerNotification(
+                        agent.getEmail(),
+                        "DSI Connect — Nouvelle affectation",
+                        messageNotif + "\n\nConnectez-vous à DSI Connect pour plus de détails."
+                    );
                 }
             }
         }
