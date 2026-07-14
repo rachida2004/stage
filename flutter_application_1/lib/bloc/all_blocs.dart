@@ -348,6 +348,25 @@ class DeleteTicket extends TicketEvent {
   @override List<Object?> get props => [ticketId];
 }
 
+class UpdateTicket extends TicketEvent {
+  final String ticketId;
+  final String? description;
+  final TicketPriority? priority;
+  final String? whatsapp;
+  final List<PlatformFile> newFiles;
+  final List<int> removeAttachmentIds;
+  UpdateTicket(
+    this.ticketId, {
+    this.description,
+    this.priority,
+    this.whatsapp,
+    this.newFiles = const [],
+    this.removeAttachmentIds = const [],
+  });
+  @override List<Object?> get props =>
+      [ticketId, description, priority, whatsapp, newFiles, removeAttachmentIds];
+}
+
 class LoadStructures extends TicketEvent {
   @override List<Object?> get props => [];
 }
@@ -441,7 +460,10 @@ class TicketBloc extends Bloc<TicketEvent, TicketState> {
 
         // L'appel passe maintenant parfaitement sans aucune erreur de type !
         await _s.create(ticketData, multiFiles: files);
-        emit(TicketSuccess('Ticket créé'));
+
+        // 🎯 On recharge directement la liste à jour (au lieu d'émettre TicketSuccess,
+        // qui n'était écouté nulle part et laissait l'écran sur "Aucun ticket trouvé").
+        emit(TicketsLoaded(await _s.getAll(currentUserId: _uid)));
       } catch (err) { emit(TicketError(err.toString())); }
     });
 
@@ -466,6 +488,31 @@ class TicketBloc extends Bloc<TicketEvent, TicketState> {
         final updatedTicket = await _s.envoyerMessage(e.ticketId, e.message,
             currentUserId: _uid);
         emit(TicketDetailL(updatedTicket));
+      } catch (err) { emit(TicketError(err.toString())); }
+    });
+
+    on<UpdateTicket>((e, emit) async {
+      emit(TicketLoading());
+      try {
+        final List<MapEntry<String, Uint8List>> files = [];
+        for (var f in e.newFiles) {
+          if (f.bytes != null) {
+            files.add(MapEntry(f.name, Uint8List.fromList(f.bytes!)));
+          } else if (f.path != null) {
+            final localFileBytes = await File(f.path!).readAsBytes();
+            files.add(MapEntry(f.name, Uint8List.fromList(localFileBytes)));
+          }
+        }
+        final updated = await _s.update(
+          e.ticketId,
+          description: e.description,
+          priority: e.priority,
+          whatsapp: e.whatsapp,
+          newFiles: files,
+          removeAttachmentIds: e.removeAttachmentIds,
+          currentUserId: _uid,
+        );
+        emit(TicketDetailL(updated));
       } catch (err) { emit(TicketError(err.toString())); }
     });
 

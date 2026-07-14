@@ -14,22 +14,24 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   http: ^1.2.0
-  flutter_secure_storage: ^9.0.0
+  flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.2.3
-  file_picker: ^8.0.0
+  file_picker: ^10.3.10
   url_launcher: ^6.3.2
-  bloc_concurrency: ^0.2.5
+  bloc_concurrency: ^0.3.0
   dio: ^5.4.0
-  flutter_bloc: ^8.1.5
+  flutter_bloc: ^9.1.1
   equatable: ^2.0.5
   flutter_pdfview: ^1.4.4
-  flutter_quill: 11.5.1
+  flutter_quill: ^11.5.0
+  web: ^1.1.1
+ 
  
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true

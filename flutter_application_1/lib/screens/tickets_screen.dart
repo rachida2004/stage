@@ -7,6 +7,9 @@ import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../widget/shared_widget.dart';
 import '../bloc/all_blocs.dart';
+import '../services/services.dart';
+import '../services/storage_service.dart';
+import '../core/api_constants.dart';
 
 // ═══════════════════════════════════════════════════════════════════
 // SCREEN PRINCIPAL : Liste des tickets
@@ -280,7 +283,112 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
-  // 🎯 Le backend exige un texte de solution pour passer un ticket en RESOLU
+  // 🎯 Modification d'un ticket par son créateur (typiquement un USAGER qui
+  // corrige une erreur : texte ou image envoyée par erreur). Permet de
+  // retirer d'anciennes pièces jointes et d'en ajouter de nouvelles.
+  void _ouvrirEditionTicket(BuildContext context, Ticket t) {
+    final descCtrl = TextEditingController(text: t.description);
+    final removedIds = <int>{};
+    final nouveauxFichiers = <PlatformFile>[];
+    final ticketBloc = context.read<TicketBloc>();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Modifier le ticket'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                  controller: descCtrl,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Pièces jointes existantes — chacune peut être retirée
+                // (ex: mauvaise image envoyée par erreur).
+                if (t.attachmentsDetail.isNotEmpty) ...[
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Pièces jointes actuelles', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: t.attachmentsDetail.where((a) => !removedIds.contains(a.id)).map((a) {
+                      return Chip(
+                        label: Text('PJ #${a.id}', style: const TextStyle(fontSize: 11)),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () => setDialogState(() => removedIds.add(a.id)),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                // Nouvelles pièces jointes à ajouter
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final result = await FilePicker.platform.pickFiles(
+                        allowMultiple: true,
+                        type: FileType.image,
+                        withData: true,
+                      );
+                      if (result != null) {
+                        setDialogState(() => nouveauxFichiers.addAll(result.files));
+                      }
+                    },
+                    icon: const Icon(Icons.attach_file, size: 16),
+                    label: const Text('Ajouter une image', style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+                if (nouveauxFichiers.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: nouveauxFichiers.map((f) => Chip(
+                        label: Text(f.name, style: const TextStyle(fontSize: 11)),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () => setDialogState(() => nouveauxFichiers.remove(f)),
+                      )).toList(),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                ticketBloc.add(UpdateTicket(
+                  t.id,
+                  description: descCtrl.text.trim(),
+                  newFiles: nouveauxFichiers,
+                  removeAttachmentIds: removedIds.toList(),
+                ));
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
   // (TicketService.modifierStatut lève une erreur 400 sinon — "Une solution
   // est requise pour clore le ticket."). On demande donc cette solution
   // avant d'envoyer la requête, au lieu de marquer résolu directement.
@@ -346,43 +454,70 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
   void _ouvrirDialogueAffectation(BuildContext context, String ticketId) {
     AppUser? agentSelectionne;
-    context.read<AdminBloc>().add(LoadUsers());
+    List<AppUser> agentsDSI = [];
+    bool loading = true;
+
+    // 🎯 On charge directement les AGENT_DSI via getAgentsDSI() au lieu
+    // de passer par AdminBloc (qui renverrait tous les utilisateurs).
+    sl<AdminService>().getAgentsDSI().then((liste) {
+      agentsDSI = liste;
+      loading = false;
+    }).catchError((_) => loading = false);
 
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text("Affecter un agent au ticket"),
-          content: BlocBuilder<AdminBloc, AdminState>(
-            bloc: context.read<AdminBloc>(),
-            builder: (context, state) {
-              if (state is AdminLoading) {
-                return const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()));
-              }
-              if (state is UsersLoaded) {
-                return DropdownButtonFormField<AppUser>(
-                  decoration: const InputDecoration(labelText: "Sélectionner un agent", border: OutlineInputBorder()),
-                  value: agentSelectionne,
-                  items: state.users.map((user) => DropdownMenuItem<AppUser>(
-                    value: user, child: Text("${user.nom} ${user.prenom}"))).toList(),
-                  onChanged: (val) => agentSelectionne = val,
-                );
-              }
-              return const Text("Erreur lors de la récupération des agents.");
-            },
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Annuler")),
-            ElevatedButton(
-              onPressed: () {
-                if (agentSelectionne != null) {
-                  context.read<TicketBloc>().add(AffecterAgentTkt(ticketId, agentSelectionne!.id.toString()));
-                  Navigator.pop(dialogContext);
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            // Déclenche le rechargement de l'UI quand les agents arrivent
+            if (loading) {
+              sl<AdminService>().getAgentsDSI().then((liste) {
+                if (dialogContext.mounted) {
+                  setDialogState(() { agentsDSI = liste; loading = false; });
                 }
-              },
-              child: const Text("Affecter"),
-            ),
-          ],
+              }).catchError((_) {
+                if (dialogContext.mounted) setDialogState(() => loading = false);
+              });
+            }
+
+            return AlertDialog(
+              title: const Text("Affecter un agent DSI au ticket"),
+              content: loading
+                  ? const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()))
+                  : agentsDSI.isEmpty
+                      ? const Text("Aucun agent DSI disponible.")
+                      : DropdownButtonFormField<AppUser>(
+                          decoration: const InputDecoration(
+                            labelText: "Agent DSI",
+                            border: OutlineInputBorder(),
+                          ),
+                          isExpanded: true,
+                          menuMaxHeight: 250,
+                          value: agentSelectionne,
+                          items: agentsDSI
+                              .map((u) => DropdownMenuItem<AppUser>(
+                                    value: u,
+                                    child: Text(
+                                      '${u.nom} ${u.prenom ?? ''}'.trim(),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ))
+                              .toList(),
+                          onChanged: (val) => setDialogState(() => agentSelectionne = val),
+                        ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Annuler")),
+                ElevatedButton(
+                  onPressed: agentSelectionne == null ? null : () {
+                    context.read<TicketBloc>().add(
+                        AffecterAgentTkt(ticketId, agentSelectionne!.id.toString()));
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text("Affecter"),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -455,13 +590,41 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     tooltip: 'Contacter sur WhatsApp',
                     onPressed: () => _ouvrirWhatsApp(context, whatsapp),
                   ),
-                // 🎯 Un USAGER crée un ticket et consulte son état, mais ne gère
-                // pas son cycle de vie (affecter/pause/résolu/fermer/supprimer) —
-                // c'est l'agent affecté qui le fait. On masque donc ce menu pour lui.
+                // 🎯 Actions selon le rôle :
+                // USAGER      → peut modifier/supprimer SON PROPRE ticket
+                //               tant qu'il n'est pas résolu/fermé (icône
+                //               crayon ici ; bouton Modifier/Supprimer
+                //               dupliqués en bas de page pour visibilité)
+                // SECRETAIRE  → peut affecter un agent uniquement
+                // Autres      → menu complet (pause, résolu, fermer, supprimer)
                 BlocBuilder<AuthBloc, AuthState>(
                   builder: (_, authState) {
-                    final estUsager = authState is AuthOk && authState.role == 'USAGER';
-                    if (estUsager) return const SizedBox.shrink();
+                    final role = authState is AuthOk ? authState.role : '';
+                    if (role == 'USAGER') {
+                      final estProprietaire = t.createur != null &&
+                          t.createur!.id == sl<StorageService>().cachedUserId;
+                      final modifiable = t.status != TicketStatus.resolu && t.status != TicketStatus.ferme;
+                      if (!estProprietaire || !modifiable) return const SizedBox.shrink();
+                      return IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: 'Modifier mon ticket',
+                        onPressed: () => _ouvrirEditionTicket(context, t),
+                      );
+                    }
+
+                    if (role == 'SECRETAIRE') {
+                      return IconButton(
+                        icon: const Icon(Icons.person_add_outlined),
+                        tooltip: 'Affecter un agent',
+                        onPressed: () => _ouvrirDialogueAffectation(context, t.id),
+                      );
+                    }
+
+                    // 🎯 "Affecter un agent" réservé à ADMIN et SECRETAIRE.
+                    // SECRETAIRE l'a déjà via son propre bouton ci-dessus ;
+                    // ici on l'ajoute uniquement pour ADMIN (les autres rôles,
+                    // ex. AGENT_DSI/SUPERVISEUR, gardent le reste du menu
+                    // mais pas l'affectation).
                     return PopupMenuButton<String>(
                       onSelected: (v) {
                         if (v == 'assign') _ouvrirDialogueAffectation(context, t.id);
@@ -470,14 +633,23 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         else if (v == 'close') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.ferme));
                         else if (v == 'delete') _showDeleteConfirmationDialog(context, t.id);
                       },
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(value: 'assign', child: Text('Affecter un agent')),
-                        const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
-                        const PopupMenuItem(value: 'resolve', child: Text('Marquer résolu')),
-                        const PopupMenuItem(value: 'close', child: Text('Fermer le ticket')),
-                        const PopupMenuDivider(),
-                        const PopupMenuItem(value: 'delete', child: Text('Supprimer', style: TextStyle(color: Colors.red))),
-                      ],
+                      itemBuilder: (_) {
+                        // 🎯 Suppression réservée à ADMIN ou à l'agent affecté
+                        // à CE ticket précis (pas n'importe quel agent).
+                        final peutSupprimer = role == 'ADMIN' ||
+                            (t.agentAssigne != null && t.agentAssigne!.id == sl<StorageService>().cachedUserId);
+                        return [
+                          if (role == 'ADMIN')
+                            const PopupMenuItem(value: 'assign', child: Text('Affecter un agent')),
+                          const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
+                          const PopupMenuItem(value: 'resolve', child: Text('Marquer résolu')),
+                          const PopupMenuItem(value: 'close', child: Text('Fermer le ticket')),
+                          if (peutSupprimer) ...[
+                            const PopupMenuDivider(),
+                            const PopupMenuItem(value: 'delete', child: Text('Supprimer', style: TextStyle(color: Colors.red))),
+                          ],
+                        ];
+                      },
                     );
                   },
                 ),
@@ -503,12 +675,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     Row(children: [
                       const Icon(Icons.business_outlined, size: 14, color: AppColors.muted),
                       const SizedBox(width: 4),
-                      Text(t.structure, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                      Flexible(child: Text(t.structure, style: const TextStyle(fontSize: 12, color: AppColors.muted), overflow: TextOverflow.ellipsis)),
                       const SizedBox(width: 12),
                       const Icon(Icons.person_outline, size: 14, color: AppColors.muted),
                       const SizedBox(width: 4),
-                      Text(t.agentAssigneNom ?? 'Non affecté',
-                          style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                      Flexible(child: Text(t.agentAssigneNom ?? 'Non affecté',
+                          style: const TextStyle(fontSize: 12, color: AppColors.muted), overflow: TextOverflow.ellipsis)),
                     ]),
 
                     // ── Contact WhatsApp ────────────────────────────────
@@ -584,12 +756,52 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     const Divider(height: 1),
                     const SizedBox(height: 12),
 
-                    // ── Boutons d'action (masqués pour un USAGER — il consulte
-                    // l'état mais ne gère pas le cycle de vie du ticket) ────
+                    // ── Boutons d'action bas de page ────────────────────
+                    // USAGER : pas de gestion du cycle de vie (pause/résolu),
+                    // mais peut modifier/supprimer SON PROPRE ticket tant
+                    // qu'il n'est pas résolu/fermé.
+                    // SECRETAIRE : ne gère pas non plus le cycle de vie.
                     BlocBuilder<AuthBloc, AuthState>(
                       builder: (_, authState) {
-                        final estUsager = authState is AuthOk && authState.role == 'USAGER';
-                        if (estUsager) return const SizedBox.shrink();
+                        final role = authState is AuthOk ? authState.role : '';
+
+                        if (role == 'USAGER') {
+                          final estProprietaire = t.createur != null &&
+                              t.createur!.id == sl<StorageService>().cachedUserId;
+                          final modifiable = t.status != TicketStatus.resolu && t.status != TicketStatus.ferme;
+                          if (!estProprietaire || !modifiable) return const SizedBox.shrink();
+                          return Row(children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _ouvrirEditionTicket(context, t),
+                                icon: const Icon(Icons.edit_outlined, size: 16),
+                                label: const Text('Modifier', style: TextStyle(fontSize: 12)),
+                                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _showDeleteConfirmationDialog(context, t.id),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red, width: 1.0),
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                ),
+                                icon: const Icon(Icons.delete_outline, size: 16),
+                                label: const Text('Supprimer', style: TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                          ]);
+                        }
+
+                        if (role == 'SECRETAIRE') return const SizedBox.shrink();
+
+                        // 🎯 Suppression réservée à ADMIN ou à l'agent affecté
+                        // à CE ticket précis (pas n'importe quel agent).
+                        final peutSupprimer = role == 'ADMIN' ||
+                            (t.agentAssigne != null && t.agentAssigne!.id == sl<StorageService>().cachedUserId);
+
                         return Column(children: [
                           Row(children: [
                             Expanded(
@@ -610,22 +822,24 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                               ),
                             ),
                           ]),
-                          const SizedBox(height: 8),
-                          // ── Bouton supprimer centré ─────────────────────
-                          Center(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _showDeleteConfirmationDialog(context, t.id),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red, width: 1.0),
-                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          if (peutSupprimer) ...[
+                            const SizedBox(height: 8),
+                            // ── Bouton supprimer centré ─────────────────────
+                            Center(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _showDeleteConfirmationDialog(context, t.id),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red, width: 1.0),
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                icon: const Icon(Icons.delete_outline, size: 16),
+                                label: const Text('Supprimer le ticket',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                               ),
-                              icon: const Icon(Icons.delete_outline, size: 16),
-                              label: const Text('Supprimer le ticket',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                             ),
-                          ),
+                          ],
                         ]);
                       },
                     ),
@@ -648,7 +862,7 @@ class _AttachmentGallery extends StatelessWidget {
   final List<String> urls;
   const _AttachmentGallery({required this.urls});
 
-  static const String _base = 'http://localhost:8085';
+  static String get _base => ApiConstants.baseUrl;
 
   /// S'assure que l'URL est absolue
   String _abs(String url) =>
@@ -751,7 +965,7 @@ class _FileTile extends StatelessWidget {
     final name = url.split('/').last;
     return InkWell(
       onTap: () async {
-        final uri = Uri.parse(url.startsWith('http') ? url : 'http://localhost:8085$url');
+        final uri = Uri.parse(url.startsWith('http') ? url : '${ApiConstants.baseUrl}$url');
         if (await url_launcher.canLaunchUrl(uri)) {
           await url_launcher.launchUrl(uri, mode: url_launcher.LaunchMode.externalApplication);
         }

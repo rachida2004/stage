@@ -109,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Icon(Icons.domain, size: 18, color: Colors.grey[600]),
                     const SizedBox(width: 12),
-                    const Text("DSI Ministère — Burkina Faso", style: TextStyle(fontSize: 13)),
+                    const Text("DSI MESFPT — Burkina Faso", style: TextStyle(fontSize: 13)),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -174,6 +174,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const Color _navColor = Color.fromARGB(255, 3, 71, 21);
 
+  // 🎯 Indices absolus (alignés sur l'IndexedStack de _buildContent) des
+  // onglets visibles selon le rôle. Un USAGER ne doit "que créer un ticket
+  // et suivre son état" -> seuls Tickets (2) et Alertes (3) lui sont ouverts.
+  // Les autres rôles gardent Tableau de bord + Invitations + Tickets + Alertes,
+  // et ADMIN a en plus l'onglet Admin (4).
+  List<int> _indicesVisibles(AuthState authState) {
+    final role = authState is AuthOk ? authState.role : '';
+    if (role == 'USAGER') return [2, 3];
+    if (role == 'ADMIN') return [0, 1, 2, 3, 4];
+    return [0, 1, 2, 3];
+  }
+
+  // 🎯 Index réellement affiché : si un USAGER se retrouve encore sur l'index
+  // par défaut (0, Tableau de bord — masqué pour lui), on retombe sur Tickets (2).
+  int _indexEffectif(AuthState authState) {
+    final visibles = _indicesVisibles(authState);
+    if (!visibles.contains(_currentIndex)) return visibles.first;
+    return _currentIndex;
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
@@ -206,12 +226,49 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Layout DESKTOP / TABLETTE — NavigationRail vertical ─────────────
   Widget _buildDesktopLayout(BuildContext context, AuthState authState, String initiales) {
-    final estAdmin = authState is AuthOk && authState.role == 'ADMIN';
+    final visibles = _indicesVisibles(authState);
+    final indexEffectif = _indexEffectif(authState);
+    _ongletsVisites.add(indexEffectif);
+
+    // 🎯 Toutes les destinations possibles, indexées par leur position
+    // absolue dans l'IndexedStack (0..4) — on ne garde ensuite que celles
+    // dont l'index est dans `visibles` pour ce rôle.
+    final Map<int, NavigationRailDestination> toutes = {
+      0: const NavigationRailDestination(
+        icon: Icon(Icons.dashboard_outlined),
+        selectedIcon: Icon(Icons.dashboard),
+        label: Text('Tableau de bord'),
+      ),
+      1: NavigationRailDestination(
+        icon: _badgeIcon(Icons.mail_outline, _nonLuesInvitations),
+        selectedIcon: const Icon(Icons.mail),
+        label: const Text('Invitations'),
+      ),
+      2: NavigationRailDestination(
+        icon: _badgeIcon(Icons.confirmation_number_outlined, _nonLuesTickets),
+        selectedIcon: const Icon(Icons.confirmation_number),
+        label: const Text('Tickets'),
+      ),
+      3: NavigationRailDestination(
+        icon: _badgeIcon(Icons.notifications_outlined, _nonLuesTotal),
+        selectedIcon: const Icon(Icons.notifications),
+        label: const Text('Alertes'),
+      ),
+      4: const NavigationRailDestination(
+        icon: Icon(Icons.settings_outlined),
+        selectedIcon: Icon(Icons.settings),
+        label: Text('Admin'),
+      ),
+    };
+
     return Scaffold(
       body: Row(children: [
         NavigationRail(
-          selectedIndex: _currentIndex,
-          onDestinationSelected: (i) => setState(() { _currentIndex = i; _ongletsVisites.add(i); }),
+          selectedIndex: visibles.indexOf(indexEffectif),
+          onDestinationSelected: (i) => setState(() {
+            _currentIndex = visibles[i];
+            _ongletsVisites.add(_currentIndex);
+          }),
           labelType: NavigationRailLabelType.all,
           backgroundColor: _navColor,
           selectedIconTheme: const IconThemeData(color: Colors.white),
@@ -229,35 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.only(bottom: 16),
             child: _avatarMenu(initiales),
           ),
-          destinations: [
-            const NavigationRailDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard),
-              label: Text('Tableau de bord'),
-            ),
-            NavigationRailDestination(
-              icon: _badgeIcon(Icons.mail_outline, _nonLuesInvitations),
-              selectedIcon: const Icon(Icons.mail),
-              label: const Text('Invitations'),
-            ),
-            NavigationRailDestination(
-              icon: _badgeIcon(Icons.confirmation_number_outlined, _nonLuesTickets),
-              selectedIcon: const Icon(Icons.confirmation_number),
-              label: const Text('Tickets'),
-            ),
-            NavigationRailDestination(
-              icon: _badgeIcon(Icons.notifications_outlined, _nonLuesTotal),
-              selectedIcon: const Icon(Icons.notifications),
-              label: const Text('Alertes'),
-            ),
-            // 🎯 L'onglet Admin n'apparaît pas du tout pour un non-administrateur.
-            if (estAdmin)
-              const NavigationRailDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: Text('Admin'),
-              ),
-          ],
+          destinations: [for (final i in visibles) toutes[i]!],
         ),
         const VerticalDivider(width: 1, thickness: 1, color: Color(0xFFB0BEC5)),
         Expanded(child: _buildContent()),
@@ -267,8 +296,41 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Layout MOBILE — barre de navigation en bas d'écran ──────────────
   Widget _buildMobileLayout(BuildContext context, AuthState authState, String initiales) {
-    final estAdmin = authState is AuthOk && authState.role == 'ADMIN';
-    final titres = ['Tableau de bord', 'Invitations', 'Tickets', 'Alertes', if (estAdmin) 'Admin'];
+    final visibles = _indicesVisibles(authState);
+    final indexEffectif = _indexEffectif(authState);
+    _ongletsVisites.add(indexEffectif);
+
+    final Map<int, String> tousLesTitres = {
+      0: 'Tableau de bord', 1: 'Invitations', 2: 'Tickets', 3: 'Alertes', 4: 'Admin',
+    };
+    final Map<int, NavigationDestination> toutes = {
+      0: const NavigationDestination(
+        icon: Icon(Icons.dashboard_outlined, color: Colors.white70),
+        selectedIcon: Icon(Icons.dashboard, color: Colors.white),
+        label: 'Accueil',
+      ),
+      1: NavigationDestination(
+        icon: _badgeIcon(Icons.mail_outline, _nonLuesInvitations),
+        selectedIcon: const Icon(Icons.mail, color: Colors.white),
+        label: 'Invitations',
+      ),
+      2: NavigationDestination(
+        icon: _badgeIcon(Icons.confirmation_number_outlined, _nonLuesTickets),
+        selectedIcon: const Icon(Icons.confirmation_number, color: Colors.white),
+        label: 'Tickets',
+      ),
+      3: NavigationDestination(
+        icon: _badgeIcon(Icons.notifications_outlined, _nonLuesTotal),
+        selectedIcon: const Icon(Icons.notifications, color: Colors.white),
+        label: 'Alertes',
+      ),
+      4: const NavigationDestination(
+        icon: Icon(Icons.settings_outlined, color: Colors.white70),
+        selectedIcon: Icon(Icons.settings, color: Colors.white),
+        label: 'Admin',
+      ),
+    };
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: _navColor,
@@ -277,45 +339,20 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.menu),
           onPressed: () => _showUserProfile(context, authState),
         ),
-        title: Text(titres[_currentIndex], style: const TextStyle(fontSize: 16)),
+        title: Text(tousLesTitres[indexEffectif]!, style: const TextStyle(fontSize: 16)),
         actions: [_avatarMenu(initiales), const SizedBox(width: 8)],
       ),
       body: _buildContent(),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (i) => setState(() { _currentIndex = i; _ongletsVisites.add(i); }),
+        selectedIndex: visibles.indexOf(indexEffectif),
+        onDestinationSelected: (i) => setState(() {
+          _currentIndex = visibles[i];
+          _ongletsVisites.add(_currentIndex);
+        }),
         backgroundColor: _navColor,
         indicatorColor: Colors.white24,
         labelTextStyle: MaterialStateProperty.all(const TextStyle(color: Colors.white, fontSize: 11)),
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined, color: Colors.white70),
-            selectedIcon: Icon(Icons.dashboard, color: Colors.white),
-            label: 'Accueil',
-          ),
-          NavigationDestination(
-            icon: _badgeIcon(Icons.mail_outline, _nonLuesInvitations),
-            selectedIcon: const Icon(Icons.mail, color: Colors.white),
-            label: 'Invitations',
-          ),
-          NavigationDestination(
-            icon: _badgeIcon(Icons.confirmation_number_outlined, _nonLuesTickets),
-            selectedIcon: const Icon(Icons.confirmation_number, color: Colors.white),
-            label: 'Tickets',
-          ),
-          NavigationDestination(
-            icon: _badgeIcon(Icons.notifications_outlined, _nonLuesTotal),
-            selectedIcon: const Icon(Icons.notifications, color: Colors.white),
-            label: 'Alertes',
-          ),
-          // 🎯 L'onglet Admin n'apparaît pas du tout pour un non-administrateur.
-          if (estAdmin)
-            const NavigationDestination(
-              icon: Icon(Icons.settings_outlined, color: Colors.white70),
-              selectedIcon: Icon(Icons.settings, color: Colors.white),
-              label: 'Admin',
-            ),
-        ],
+        destinations: [for (final i in visibles) toutes[i]!],
       ),
     );
   }
@@ -349,6 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (_, authState) {
         final estAdmin = authState is AuthOk && authState.role == 'ADMIN';
+        final indexEffectif = _indexEffectif(authState);
         // 🎯 Un onglet non encore visité reste un simple SizedBox — aucun de
         // ses appels API (LoadTickets, LoadInvitationsRecues, LoadNotifs...)
         // n'est déclenché tant que l'utilisateur n'a pas cliqué dessus.
@@ -356,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _ongletsVisites.contains(index) ? builder() : const SizedBox.shrink();
 
         return IndexedStack(
-          index: _currentIndex,
+          index: indexEffectif,
           children: [
             tab(0, () => const DashboardScreen()),
             tab(1, () => const InvitationsScreen()),

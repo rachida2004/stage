@@ -395,6 +395,19 @@ class TicketMessage {
   }
 }
 
+// 🎯 Pièce jointe de ticket avec son ID — nécessaire pour permettre à
+// l'usager de retirer une pièce jointe précise (ex: image envoyée par
+// erreur) lors de la modification de son ticket.
+class TicketAttachment {
+  final int id;
+  final String url;
+  TicketAttachment({required this.id, required this.url});
+  factory TicketAttachment.fromJson(Map j) => TicketAttachment(
+        id: int.tryParse(j['id']?.toString() ?? '') ?? 0,
+        url: j['url']?.toString() ?? '',
+      );
+}
+
 class Ticket {
   final String id;
   final String description;
@@ -406,6 +419,7 @@ class Ticket {
   final AppUser? createur;
   final String? attachmentUrl;       // compat — 1ère PJ
   final List<String> attachments;   // toutes les PJ (URLs absolues)
+  final List<TicketAttachment> attachmentsDetail; // toutes les PJ avec ID (pour suppression ciblée)
   final String? whatsapp;
   final List<TicketMessage> messages;
   final String? solution;
@@ -421,6 +435,7 @@ class Ticket {
     this.createur,
     this.attachmentUrl,
     this.attachments = const [],
+    this.attachmentsDetail = const [],
     this.whatsapp,
     this.messages = const [],
     this.solution,
@@ -447,6 +462,8 @@ class Ticket {
     attachments: (j['attachments'] as List<dynamic>? ?? [])
         .map((e) => (e is Map ? e['url']?.toString() : e?.toString()) ?? '')
         .where((u) => u.isNotEmpty).toList(),
+    attachmentsDetail: (j['attachments'] as List<dynamic>? ?? [])
+        .whereType<Map>().map((e) => TicketAttachment.fromJson(e)).toList(),
     whatsapp: j['whatsapp'],
     messages: (j['messages'] as List<dynamic>? ?? j['communications'] as List<dynamic>? ?? [])
         .map((m) => TicketMessage.fromJson(m, currentUserId: currentUserId)).toList(),

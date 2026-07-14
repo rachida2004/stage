@@ -120,14 +120,16 @@ class StatCard extends StatelessWidget {
         children: [
        Text(
   value,
-  style: const TextStyle(
+  style: TextStyle(
     fontSize: 24,
     fontWeight: FontWeight.w600,
-    color: Colors.white,
+    color: isDark ? Colors.white : const Color(0xFF1A1A2E),
   ),
 ),
           const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 12, color: Color.fromARGB(255, 238, 239, 244))),
+          Text(label, style: TextStyle(
+              fontSize: 12,
+              color: isDark ? const Color.fromARGB(255, 238, 239, 244) : AppColors.muted)),
           if (delta != null) ...[
             const SizedBox(height: 4),
             Text(delta!, style: TextStyle(fontSize: 11, color: deltaPositive ? AppColors.success : AppColors.danger)),

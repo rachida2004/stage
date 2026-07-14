@@ -146,6 +146,35 @@ class ApiClient {
     }
   }
 
+  /// 6bis. MODIFIER UN TICKET (créateur ou admin) : description, priorité,
+  /// whatsapp, retrait d'anciennes PJ, ajout de nouvelles.
+  /// Correspond à : PUT /api/tickets/{id}
+  Future<Response> modifierTicketMultipart({
+    required int ticketId,
+    String? description,
+    String? priority,
+    String? whatsapp,
+    List<MapEntry<String, List<int>>> newFiles = const [],
+    List<int> removeAttachmentIds = const [],
+  }) async {
+    try {
+      final Map<String, dynamic> formDataMap = {};
+      if (description != null && description.isNotEmpty) formDataMap['description'] = description;
+      if (priority != null && priority.isNotEmpty) formDataMap['priority'] = priority;
+      if (whatsapp != null) formDataMap['whatsapp'] = whatsapp;
+      if (removeAttachmentIds.isNotEmpty) formDataMap['removeAttachmentIds'] = removeAttachmentIds;
+      if (newFiles.isNotEmpty) {
+        formDataMap['file'] = newFiles
+            .map((e) => MultipartFile.fromBytes(e.value, filename: e.key))
+            .toList();
+      }
+      final formData = FormData.fromMap(formDataMap);
+      return await dio.put('/api/tickets/$ticketId', data: formData);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   /// 6. AFFECTER UN AGENT À UN TICKET
   /// Correspond à : POST /api/tickets/{ticketId}/affecter/{agentId}
   Future<Response> affecterAgent({required int ticketId, required int agentId}) async {

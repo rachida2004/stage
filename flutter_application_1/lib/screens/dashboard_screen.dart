@@ -102,12 +102,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Bonjour${nom.isNotEmpty ? ', $nom' : ''}',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.white)),
           Text(
-            offline ? 'Mode hors-ligne — données de démonstration' : 'DSI Ministère — Burkina Faso',
+            offline ? 'Mode hors-ligne — données de démonstration' : 'DSI MESFPT — Burkina Faso',
             style: TextStyle(
               fontSize: 11, fontWeight: FontWeight.w400,
-              color: offline ? AppColors.warning : AppColors.muted,
+              color: offline ? AppColors.warning : Colors.white70,
             ),
           ),
         ]),
@@ -146,7 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // KPI row 2
             Row(children: [
               Expanded(child: _KpiCard(
-                value: '${stats.invitationsTerminees}', label: 'Traitées',
+                value: '${stats.invitationsTerminees}', label: ' Invitations traitées ',
                 delta: '${stats.invitationsPlanifiees} planifiées', deltaPositive: true,
                 icon: Icons.trending_up_outlined,
                 bg: const Color(0xFFF0FDF4), iconColor: const Color(0xFF16A34A), valueColor: const Color(0xFF15803D),

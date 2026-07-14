@@ -305,6 +305,7 @@ class _CreateAccountDialog extends StatefulWidget {
 }
 
 class _CreateAccountDialogState extends State<_CreateAccountDialog> {
+  final _formKey    = GlobalKey<FormState>();
   final _nomCtrl    = TextEditingController();
   final _prenomCtrl = TextEditingController();
   final _emailCtrl  = TextEditingController();
@@ -317,7 +318,7 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
   List<Service>   _filteredServices  = [];
   Structure?      _selectedStructure;
   Service?        _selectedService;
-  String?         _selectedRole;
+  // _selectedRole supprimé : tout compte créé ici est USAGER par défaut.
   bool            _loading           = true;
 
   @override
@@ -333,7 +334,7 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
       if (mounted) setState(() {
         _structures       = structures;
         _services         = services;
-        _filteredServices = services;
+        _filteredServices = [];
         _loading          = false;
       });
     } catch (_) {
@@ -346,7 +347,7 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
       _selectedStructure = s;
       _selectedService   = null;
       _filteredServices  = s == null
-          ? _services
+          ? []
           : _services.where((svc) => svc.structure?.id == s.id).toList();
     });
   }
@@ -365,21 +366,27 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
       title: const Text('Créer un compte', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
       content: _loading
         ? const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()))
-        : SingleChildScrollView(
+        : Form(
+            key: _formKey,
+            child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: _nomCtrl,
-                decoration: const InputDecoration(labelText: 'Nom', prefixIcon: Icon(Icons.person_outline, size: 18))),
+              TextFormField(controller: _nomCtrl,
+                decoration: const InputDecoration(labelText: 'Nom', prefixIcon: Icon(Icons.person_outline, size: 18)),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null),
               const SizedBox(height: 10),
-              TextField(controller: _prenomCtrl,
-                decoration: const InputDecoration(labelText: 'Prénom', prefixIcon: Icon(Icons.person_outline, size: 18))),
+              TextFormField(controller: _prenomCtrl,
+                decoration: const InputDecoration(labelText: 'Prénom', prefixIcon: Icon(Icons.person_outline, size: 18)),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null),
               const SizedBox(height: 10),
-              TextField(controller: _emailCtrl,
+              TextFormField(controller: _emailCtrl,
                 decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.mail_outline, size: 18)),
-                keyboardType: TextInputType.emailAddress),
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) => v == null || !v.contains('@') ? 'Email invalide' : null),
               const SizedBox(height: 10),
-              TextField(controller: _passCtrl,
+              TextFormField(controller: _passCtrl,
                 decoration: const InputDecoration(labelText: 'Mot de passe', prefixIcon: Icon(Icons.lock_outline, size: 18)),
-                obscureText: true),
+                obscureText: true,
+                validator: (v) => v == null || v.length < 6 ? '6 caractères minimum' : null),
               const SizedBox(height: 10),
               TextField(controller: _telCtrl,
                 decoration: const InputDecoration(labelText: 'Téléphone', prefixIcon: Icon(Icons.phone, size: 18)),
@@ -389,13 +396,21 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
               // ✅ Dropdown Structure dynamique (depuis API)
               DropdownButtonFormField<Structure>(
                 value: _selectedStructure,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Structure',
                   prefixIcon: Icon(Icons.domain, size: 18),
                 ),
-                hint: Text(_structures.isEmpty ? 'Aucune structure disponible' : 'Sélectionner'),
+                hint: Text(
+                  _structures.isEmpty ? 'Aucune structure disponible' : 'Sélectionner',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
                 items: _structures
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s.nom)))
+                    .map((s) => DropdownMenuItem(
+                          value: s,
+                          child: Text(s.nom, overflow: TextOverflow.ellipsis, maxLines: 1),
+                        ))
                     .toList(),
                 onChanged: _structures.isEmpty ? null : _onStructureChanged,
               ),
@@ -404,17 +419,25 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
               // ✅ Dropdown Service filtré par structure
               DropdownButtonFormField<Service>(
                 value: _selectedService,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Service',
                   prefixIcon: Icon(Icons.miscellaneous_services, size: 18),
                 ),
-                hint: Text(_selectedStructure == null
-                    ? 'Choisissez d\'abord une structure'
-                    : _filteredServices.isEmpty
-                        ? 'Aucun service disponible'
-                        : 'Sélectionner'),
+                hint: Text(
+                  _selectedStructure == null
+                      ? 'Choisissez d\'abord une structure'
+                      : _filteredServices.isEmpty
+                          ? 'Aucun service disponible'
+                          : 'Sélectionner',
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
                 items: _filteredServices
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s.nom)))
+                    .map((s) => DropdownMenuItem(
+                          value: s,
+                          child: Text(s.nom, overflow: TextOverflow.ellipsis, maxLines: 1),
+                        ))
                     .toList(),
                 onChanged: _filteredServices.isEmpty ? null : (v) => setState(() => _selectedService = v),
               ),
@@ -422,25 +445,17 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
 
               TextField(controller: _iuCtrl,
                 decoration: const InputDecoration(labelText: 'Identifiant unique', prefixIcon: Icon(Icons.badge, size: 18))),
-              const SizedBox(height: 10),
-
-              DropdownButtonFormField<String>(
-                value: _selectedRole,
-                decoration: const InputDecoration(labelText: 'Rôle', prefixIcon: Icon(Icons.shield_outlined, size: 18)),
-                items: const [
-                  DropdownMenuItem(value: 'ADMIN',      child: Text('Administrateur')),
-                  DropdownMenuItem(value: 'AGENT_DSI',  child: Text('Agent DSI')),
-                  DropdownMenuItem(value: 'SUPERVISEUR',child: Text('Superviseur')),
-                  DropdownMenuItem(value: 'USAGER',     child: Text('Usager')),
-                ],
-                onChanged: (v) => setState(() => _selectedRole = v),
-              ),
+              // 🎯 Tout compte créé via ce formulaire est un USAGER par défaut.
+              // L'attribution d'un autre rôle (AGENT_DSI, ADMIN...) se fait
+              // uniquement par l'administrateur depuis Admin → Utilisateurs.
             ]),
+          ),
           ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
         ElevatedButton(
           onPressed: _loading ? null : () {
+            if (!(_formKey.currentState?.validate() ?? false)) return;
             Navigator.pop(context);
             context.read<AuthBloc>().add(RegisterSubmitted({
               'nom':      _nomCtrl.text.trim(),
@@ -451,7 +466,7 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
               if (_selectedStructure != null) 'structureId': _selectedStructure!.id,
               if (_selectedService != null)   'serviceId':   _selectedService!.id,
               if (_iuCtrl.text.isNotEmpty) 'identifiantUnique': _iuCtrl.text.trim(),
-              'role': _selectedRole ?? 'USAGER',
+              'role': 'USAGER',
             }));
           },
           child: const Text('Créer le compte'),

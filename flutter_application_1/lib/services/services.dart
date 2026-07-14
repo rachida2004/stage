@@ -124,6 +124,7 @@ class InvitationService {
       if (data['numeroReference'] != null)   payload['numeroReference']   = data['numeroReference'];
       if (data['ville'] != null)             payload['ville']             = data['ville'];
       if (data['contenu'] != null)           payload['contenu']           = data['contenu'];
+      if (data['contenuDelta'] != null)      payload['contenuDelta']      = data['contenuDelta'];
       if (data['ampliation'] != null)        payload['ampliation']        = data['ampliation'];
       if (data['signataireNom'] != null)     payload['signataireNom']     = data['signataireNom'];
       if (data['signataireQualite'] != null) payload['signataireQualite'] = data['signataireQualite'];
@@ -285,6 +286,29 @@ class TicketService {
         whatsapp: data['whatsapp'],
       );
       return Ticket.fromJson(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  // 🎯 Modification (créateur du ticket, ex: USAGER corrigeant une erreur, ou ADMIN)
+  Future<Ticket> update(
+    String id, {
+    String? description,
+    TicketPriority? priority,
+    String? whatsapp,
+    List<MapEntry<String, Uint8List>> newFiles = const [],
+    List<int> removeAttachmentIds = const [],
+    String? currentUserId,
+  }) async {
+    try {
+      final res = await _api.modifierTicketMultipart(
+        ticketId: int.parse(id),
+        description: description,
+        priority: priority?.apiValue,
+        whatsapp: whatsapp,
+        newFiles: newFiles.map((e) => MapEntry(e.key, e.value.toList())).toList(),
+        removeAttachmentIds: removeAttachmentIds,
+      );
+      return Ticket.fromJson(res.data, currentUserId: currentUserId);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
@@ -539,6 +563,17 @@ Future<List<AppUser>> getUsers() async {
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
+  /// Pour l'affectation d'un ticket : uniquement les AGENT_DSI actifs.
+  Future<List<AppUser>> getAgentsDSI() async {
+    try {
+      final res = await _api.dio.get('/api/agents', queryParameters: {'role': 'AGENT_DSI'});
+      final data = res.data;
+      final raw = data is List ? data as List
+          : data is Map && data.containsKey('content') ? data['content'] as List : [];
+      return raw.map((u) => AppUser.fromJson(u)).where((u) => u.isActive).toList();
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
   // ── Paramètres ───────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getSettings() async {
@@ -548,14 +583,8 @@ Future<List<AppUser>> getUsers() async {
       final s      = SL.instance.storage;
       remote.forEach((k, v) => s.write('settings_$k', v.toString()));
       return remote;
-    } catch (_) {
-      final s = SL.instance.storage;
-      return {
-        'notificationsEmail':    (await s.read('settings_notificationsEmail')) != 'false',
-        'notificationsInternes': (await s.read('settings_notificationsInternes')) != 'false',
-        'delaiMaxSansAffectation': await s.read('settings_delaiMaxSansAffectation') ?? '48h',
-        'langue': await s.read('settings_langue') ?? 'Français',
-      };
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
     }
   }
 
@@ -701,6 +730,17 @@ class ApiException implements Exception {
     }
     if (code == 401) {
       return ApiException("Votre session a expiré. Veuillez vous reconnecter.", statusCode: code);
+    }
+
+    // 🎯 Toute erreur serveur (5xx) affiche un message clair et compréhensible.
+    // Le message technique de Dio (ex: "RequestOptions.validateStatus was
+    // configured to throw...") ne doit JAMAIS apparaître à l'utilisateur —
+    // ça n'a aucun sens pour quelqu'un qui n'est pas développeur.
+    if (code != null && code >= 500) {
+      return ApiException(
+        "Une erreur est survenue sur le serveur. Réessayez dans un instant ; si le problème persiste, contactez le support.",
+        statusCode: code,
+      );
     }
 
     final body = e.response?.data;

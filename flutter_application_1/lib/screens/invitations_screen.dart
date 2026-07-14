@@ -77,7 +77,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       listener: (context, state) {
         if (state is InvitationSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.msg), backgroundColor: AppColors.success),
+            SnackBar(content: Text(state.msg), backgroundColor: const Color.fromARGB(255, 11, 67, 32)),
           );
           _chargerOngletActuel();
         }
@@ -404,7 +404,13 @@ class _AddInvitationSheet extends StatefulWidget {
 }
 
 class _AddInvitationSheetState extends State<_AddInvitationSheet> {
+  // 🎯 Remplace le champ texte libre par une liste déroulante des structures
+  // en base, avec recherche par nom.
   final _structureEmettriceCtrl = TextEditingController();
+  Structure? _structureSelectionnee;
+  List<Structure> _structuresList = [];
+  bool _loadingStructures = true;
+
   final _objetCtrl  = TextEditingController();
   final _lieuCtrl   = TextEditingController();
   final _nbCtrl     = TextEditingController();
@@ -412,6 +418,21 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
   DateTime? _dateFin;
 
   final List<PlatformFile> _selectedFiles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerStructures();
+  }
+
+  Future<void> _chargerStructures() async {
+    try {
+      final liste = await sl<AdminService>().getStructures();
+      if (mounted) setState(() { _structuresList = liste; _loadingStructures = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingStructures = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -543,13 +564,75 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
                   style: TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _structureEmettriceCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Structure émettrice *",
-                    hintText: "Ex: DIRECTION DES SYSTÈMES D'INFORMATION",
-                  ),
-                ),
+
+                // 🎯 Liste déroulante des structures en base avec recherche par nom
+                _loadingStructures
+                  ? const SizedBox(height: 48, child: Center(child: LinearProgressIndicator()))
+                  : Autocomplete<Structure>(
+                      displayStringForOption: (s) => s.nom,
+                      optionsBuilder: (TextEditingValue tv) {
+                        if (tv.text.isEmpty) return _structuresList;
+                        return _structuresList.where((s) =>
+                            s.nom.toLowerCase().contains(tv.text.toLowerCase()));
+                      },
+                      onSelected: (Structure s) {
+                        setState(() => _structureSelectionnee = s);
+                        _structureEmettriceCtrl.text = s.nom;
+                      },
+                      fieldViewBuilder: (ctx, ctrl, focusNode, onSubmitted) =>
+                        TextField(
+                          controller: ctrl,
+                          focusNode: focusNode,
+                          decoration: InputDecoration(
+                            labelText: "Structure émettrice *",
+                            hintText: "Tapez pour rechercher…",
+                            prefixIcon: const Icon(Icons.account_balance_outlined, size: 18),
+                            suffixIcon: _structureSelectionnee != null
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      setState(() => _structureSelectionnee = null);
+                                      ctrl.clear();
+                                      _structureEmettriceCtrl.clear();
+                                    },
+                                  )
+                                : const Icon(Icons.arrow_drop_down),
+                          ),
+                        ),
+                     optionsViewBuilder: (ctx, onSel, opts) => Align(
+  alignment: Alignment.topLeft,
+  child: Material(
+    elevation: 4,
+    borderRadius: BorderRadius.circular(8),
+    color: Colors.white, // 👈 Force le fond du menu en blanc opaque
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 200),
+      child: ListView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: opts.length,
+        itemBuilder: (_, i) {
+          final s = opts.elementAt(i);
+          return ListTile(
+            dense: true,
+            // 👈 On force la couleur du texte en noir pour qu'il soit bien visible
+            title: Text(
+              s.nom, 
+              style: const TextStyle(
+                color: Colors.black87, 
+                fontSize: 13,
+                fontWeight: FontWeight.w500
+              ),
+            ),
+            onTap: () => onSel(s),
+          );
+        },
+      ),
+    ),
+  ),
+),
+                    ),
+
                 const SizedBox(height: 10),
                 TextField(
                   controller: _objetCtrl,
@@ -625,7 +708,7 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
                   Container(
                     constraints: const BoxConstraints(maxHeight: 120),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
+                      color: const Color.fromARGB(255, 20, 9, 9),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.border, width: 0.5),
                     ),
@@ -639,7 +722,7 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
                           dense: true,
                           leading: const Icon(
                             Icons.insert_drive_file,
-                            color: AppColors.muted,
+                            color: Color.fromARGB(222, 13, 2, 2),
                             size: 18,
                           ),
                           title: Text(
@@ -699,9 +782,10 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   // remplace QUE quand le state reçu est effectivement InvDetailLoaded.
   late Invitation _invAffichee;
 
-  // Configuration de l'URL de ton serveur de gestion DSI (Ajuste l'adresse en prod ou préprod)
-  // Utilise "http://10.0.2.2:8080" pour tester depuis un émulateur Android vers ton localhost
-  static final String _baseUrl = kIsWeb ? "http://localhost:8085" : "http://10.0.2.2:8085";
+  // Configuration de l'URL de ton serveur de gestion DSI.
+  // ApiConstants.baseUrl gère automatiquement web / émulateur / téléphone
+  // physique (via --dart-define=API_HOST).
+  static String get _baseUrl => ApiConstants.baseUrl;
 
   @override
   void initState() {
@@ -909,11 +993,14 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
         ),
         actions: [
-          // 🎯 ADMIN, ou tout rôle ayant la permission AFFECTER_AGENT (cochée
-          // depuis Admin → Rôles → permissions, sans toucher au code).
+          // 🎯 Affectation gérée par ADMIN et SECRETAIRE uniquement
+          // (le nom de permission 'AFFECTER_AGENT' n'existe pas côté backend
+          // — l'enum Permission a AFFECTER_INVITATION/AFFECTER_TICKET —
+          // donc on se base directement sur le rôle, comme pour les tickets).
           BlocBuilder<AuthBloc, AuthState>(
             builder: (_, authState) {
-              final peutAffecter = authState is AuthOk && authState.a('AFFECTER_AGENT');
+              final role = authState is AuthOk ? authState.role : '';
+              final peutAffecter = role == 'ADMIN' || role == 'SECRETAIRE';
               if (estUneLettreCreee || !peutAffecter) return const SizedBox.shrink();
               return TextButton.icon(
                 onPressed: () => _showAffectationModal(context),
@@ -945,6 +1032,7 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
             _invAffichee = state.inv;
           }
           final Invitation invitationAffichee = _invAffichee;
+          final bool loading = state is InvitationLoading;
 
           final bool afficherExport = invitationAffichee.modeCreation == 'CREER';
           final bool afficherAffectation = !afficherExport;
@@ -1062,8 +1150,13 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
                               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
                             ),
                           ),
+                          if (loading)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
                           TextButton.icon(
-                            onPressed: () => _showAjouterStructureDialog(context, invitationAffichee),
+                            onPressed: loading ? null : () => _showAjouterStructureDialog(context, invitationAffichee),
                             icon: const Icon(Icons.add, size: 18),
                             label: const Text('Ajouter'),
                             style: TextButton.styleFrom(foregroundColor: const Color.fromARGB(255, 5, 77, 35)),
@@ -1272,7 +1365,14 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
 
               const SizedBox(height: 20),
 // ─── ACTIONS : MODIFIER ET SUPPRIMER ─────────────────────────────────────────
-Padding(
+// 🎯 Un AGENT_DSI ne fait que consulter les invitations : il ne doit
+// jamais voir les boutons Modifier / Supprimer, quel que soit le
+// mode de création (CREER ou ENREGISTRER) ni le statut.
+BlocBuilder<AuthBloc, AuthState>(
+  builder: (_, authState) {
+    final role = authState is AuthOk ? authState.role : '';
+    if (role == 'AGENT_DSI') return const SizedBox.shrink();
+    return Padding(
   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
   child: Row(
     children: [
@@ -1322,6 +1422,8 @@ Padding(
       ),
     ],
   ),
+);
+  },
 ),
             ],
           );
@@ -1528,7 +1630,7 @@ class WidgetAgentsList extends StatelessWidget {
             children: [
               CheckboxListTile(
                 dense: true,
-                activeColor: const Color(0xFF2ECC71),
+                activeColor: const Color.fromARGB(255, 3, 58, 26),
                 title: Text(
                   '${agent.nom} ${agent.prenom ?? ''}'.trim(),
                   style: const TextStyle(
@@ -1648,7 +1750,7 @@ class _AjouterStructureDialogState extends State<_AjouterStructureDialog> {
                   widget.onAjouter(_selectionnee!.id!);
                   Navigator.pop(context);
                 },
-          style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 6, 69, 21), foregroundColor: Colors.white),
+          style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 4, 61, 18), foregroundColor: Colors.white),
           child: const Text('Ajouter'),
         ),
       ],
@@ -1668,19 +1770,25 @@ class _DetailRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 20, color: const Color(0xFF64748B)),
           const SizedBox(width: 12),
           Expanded(
+            flex: 2,
             child: Text(
               label,
               style: const TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 14, color: Color.fromARGB(255, 9, 9, 10)),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontSize: 14, color: Color.fromARGB(255, 9, 9, 10)),
+            ),
           ),
         ],
       ),

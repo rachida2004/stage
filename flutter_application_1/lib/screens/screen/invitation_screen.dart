@@ -234,8 +234,16 @@ class _InvitationScreenState extends State<InvitationScreen> {
                     return FilterChip(
                       label: Text(s.nom),
                       selected: selected,
+                      backgroundColor: Colors.white,
                       selectedColor: AppColors.primary.withOpacity(0.15),
                       checkmarkColor: AppColors.primary,
+                      labelStyle: TextStyle(
+                        color: selected ? AppColors.primary : Colors.black87,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                      side: BorderSide(
+                        color: selected ? AppColors.primary : const Color(0xFFCBD5E1),
+                      ),
                       onSelected: (v) {
                         if (s.id == null) return;
                         setState(() { if (v) _structuresDestinatairesIds.add(s.id!); else _structuresDestinatairesIds.remove(s.id!); });
@@ -361,7 +369,12 @@ class _InvitationScreenState extends State<InvitationScreen> {
               // ── Ampliation + Signataire côte à côte ──────────────
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Expanded(child: TextField(controller: _ampliationCtrl,
-                    decoration: const InputDecoration(labelText: 'Ampliation', hintText: 'ex: MESFPT/ATCR'))),
+                    decoration: const InputDecoration(
+                      labelText: 'Ampliation',
+                      hintText: 'ex: MESFPT/ATCR; DGESS; DAF',
+                      helperText: 'Séparez plusieurs destinataires par un point-virgule ( ; )',
+                      helperMaxLines: 2,
+                    ))),
                 const SizedBox(width: 10),
                 Expanded(child: TextField(controller: _signataireNomCtrl,
                     decoration: const InputDecoration(labelText: 'Nom du signataire', hintText: 'ex: Rachid BARRO'))),

@@ -3,10 +3,18 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 class ApiConstants {
   ApiConstants._();
 
-  // Utilisez 'localhost' pour le Web, 10.0.2.2 pour Android
+  // 🎯 Pour tester sur un téléphone physique (pas l'émulateur), lance l'app avec :
+  //   flutter run --dart-define=API_HOST=192.168.1.42
+  // en remplaçant par l'IP locale de ton PC sur le même Wi-Fi que le téléphone
+  // (visible via `ipconfig` sous Windows, ligne "Adresse IPv4").
+  // Sans ce paramètre, le comportement par défaut ne change pas :
+  // web -> localhost, émulateur Android -> 10.0.2.2.
+  static const String _apiHost = String.fromEnvironment('API_HOST', defaultValue: '');
+
   static String get baseUrl {
-    if (kIsWeb) return 'http://localhost:8085'; 
-    return 'http://10.0.2.2:8085';
+    if (_apiHost.isNotEmpty) return 'http://$_apiHost:8085';
+    if (kIsWeb) return 'http://localhost:8085';
+    return 'http://10.0.2.2:8085'; // Émulateur Android uniquement
   }
 
   static const int connectTimeout = 30000;

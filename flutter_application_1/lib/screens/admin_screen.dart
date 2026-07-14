@@ -250,16 +250,19 @@ class _UserTile extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(children: [
-            UserAvatar(initials: user.initiales, size: 38),
+            UserAvatar(initials: user.initiales.isEmpty ? '?' : user.initiales, size: 38),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(user.nom,
+                Text(user.nom.trim().isEmpty ? '(Nom non renseigné)' : user.nom,
                   style: TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w500,
+                    fontStyle: user.nom.trim().isEmpty ? FontStyle.italic : FontStyle.normal,
+                    color: user.nom.trim().isEmpty ? AppColors.muted : null,
                     decoration: !user.isActive ? TextDecoration.lineThrough : null,
                   )),
-                Text(user.email, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+                Text(user.email.trim().isEmpty ? '(Email non renseigné) — id: ${user.id}' : user.email,
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted)),
               ]),
             ),
             StatusBadge.fromUserRole(user.role),
@@ -398,7 +401,7 @@ class _RolesTabState extends State<_RolesTab> {
             // ── Permissions ──────────────────────────────────────────
             const SizedBox(height: 16),
             const Align(alignment: Alignment.centerLeft,
-                child: Text('Permissions', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                child: Text('Permissions', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,color: Colors.black87,))),
             const SizedBox(height: 4),
             if (_permissionsCatalogue.isEmpty)
               const Padding(
@@ -409,8 +412,12 @@ class _RolesTabState extends State<_RolesTab> {
               ..._permissionsCatalogue.map((p) => CheckboxListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
+
                     controlAffinity: ListTileControlAffinity.leading,
-                    title: Text(_libellesPermissions[p] ?? p, style: const TextStyle(fontSize: 13)),
+                    title: Text(
+          _libellesPermissions[p] ?? p, 
+          style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
+        ),
                     value: permsSelectionnees.contains(p),
                     onChanged: (v) => setDialogState(() {
                       if (v == true) permsSelectionnees.add(p); else permsSelectionnees.remove(p);

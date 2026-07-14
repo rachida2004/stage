@@ -6,9 +6,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-// Imports conditionnels pour éviter les crashs de compilation sur mobile
-import 'dart:ui_web' as ui_web;
-import 'package:web/web.dart' as web;
+// Import VRAIMENT conditionnel : sur Web -> web_pdf_view_web.dart
+// (qui importe dart:ui_web + package:web), sur mobile/desktop ->
+// web_pdf_view_stub.dart (aucune dépendance web). Le choix se fait
+// à la COMPILATION, donc ça ne casse jamais le build Android/iOS.
+import 'web_pdf_view_stub.dart'
+    if (dart.library.html) 'web_pdf_view_web.dart';
 
 class PdfViewerPage extends StatefulWidget {
   final String pdfUrl;
@@ -33,14 +36,7 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
 
     if (kIsWeb) {
       // Enregistrement de l'IFrame HTML pour le Web
-      ui_web.platformViewRegistry.registerViewFactory(_viewId, (int viewId) {
-        final element = web.HTMLIFrameElement()
-          ..src = widget.pdfUrl
-          ..style.border = 'none'
-          ..style.width = '100%'
-          ..style.height = '100%';
-        return element;
-      });
+      registerWebPdfView(_viewId, widget.pdfUrl);
       setState(() {
         isLoading = false;
       });
