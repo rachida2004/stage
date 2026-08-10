@@ -23,6 +23,93 @@ Future<void> ouvrirPieceJointe(String urlOrPath) async {
   }
 }
 
+// 🎯 Extrait en fonction top-level (au lieu d'une méthode privée de
+// _InvitationDetailScreenState) pour être réutilisable depuis
+// StructuresDestinatairesScreen (page dédiée) sans dupliquer le code.
+Widget badgeStatutReponse(String statut) {
+  Color couleur;
+  String libelle;
+  switch (statut) {
+    case 'ACCEPTEE':
+      couleur = const Color(0xFF16A34A);
+      libelle = 'Acceptée';
+      break;
+    case 'REFUSEE':
+      couleur = const Color(0xFFDC2626);
+      libelle = 'Refusée';
+      break;
+    case 'EXCUSEE':
+      couleur = const Color(0xFFD97706);
+      libelle = 'Excusée';
+      break;
+    default:
+      couleur = const Color(0xFF64748B);
+      libelle = 'En attente';
+  }
+  return Container(
+    margin: const EdgeInsets.only(right: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: couleur.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(libelle, style: TextStyle(fontSize: 11, color: couleur, fontWeight: FontWeight.w600)),
+  );
+}
+
+// 🎯 Ligne d'une structure invitée (nom + badge de statut + menu d'actions),
+// factorisée pour être utilisée à la fois dans le résumé de la fiche
+// invitation et dans la page dédiée StructuresDestinatairesScreen.
+Widget structureInviteeRow(BuildContext context, StructureInviteeRef si) {
+  return Container(
+    margin: const EdgeInsets.only(top: 6),
+    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.account_balance_outlined, size: 18, color: Color.fromARGB(255, 5, 77, 35)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(si.nom, style: const TextStyle(fontSize: 13)),
+        ),
+        badgeStatutReponse(si.statutReponse),
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, size: 18),
+          onSelected: (action) {
+            if (si.structureInviteeId == null) {
+              // 🎯 Ne devrait jamais arriver si le backend renvoie bien
+              // "structureInviteeId" — message explicite plutôt qu'un no-op silencieux.
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text("Impossible d'identifier cette structure destinataire (id manquant)."),
+                backgroundColor: Colors.red,
+              ));
+              return;
+            }
+            if (action == 'RETIRER') {
+              context.read<InvitationBloc>().add(
+                  SupprimerStructureInvitee(structureInviteeId: si.structureInviteeId!));
+            } else {
+              context.read<InvitationBloc>().add(ModifierStatutStructureInvitee(
+                  structureInviteeId: si.structureInviteeId!, statutReponse: action));
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'EN_ATTENTE', child: Text('Marquer en attente')),
+            PopupMenuItem(value: 'ACCEPTEE', child: Text('Marquer acceptée')),
+            PopupMenuItem(value: 'REFUSEE', child: Text('Marquer refusée')),
+            PopupMenuItem(value: 'EXCUSEE', child: Text('Marquer excusée')),
+            PopupMenuDivider(),
+            PopupMenuItem(value: 'RETIRER', child: Text('Retirer', style: TextStyle(color: Colors.red))),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
 class InvitationsScreen extends StatefulWidget {
   const InvitationsScreen({super.key});
 
@@ -685,7 +772,7 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
                 TextField(
                   controller: _nbCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Nombre de participants'),
+                  decoration: const InputDecoration(labelText: 'Nombre de participants de la DSI'),
                 ),
                 const SizedBox(height: 16),
                 const Text(
@@ -797,36 +884,8 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
-  Widget _badgeStatutReponse(String statut) {
-    Color couleur;
-    String libelle;
-    switch (statut) {
-      case 'ACCEPTEE':
-        couleur = const Color(0xFF16A34A);
-        libelle = 'Acceptée';
-        break;
-      case 'REFUSEE':
-        couleur = const Color(0xFFDC2626);
-        libelle = 'Refusée';
-        break;
-      case 'EXCUSEE':
-        couleur = const Color(0xFFD97706);
-        libelle = 'Excusée';
-        break;
-      default:
-        couleur = const Color(0xFF64748B);
-        libelle = 'En attente';
-    }
-    return Container(
-      margin: const EdgeInsets.only(right: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: couleur.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(libelle, style: TextStyle(fontSize: 11, color: couleur, fontWeight: FontWeight.w600)),
-    );
-  }
+  // 🎯 badgeStatutReponse() est maintenant une fonction top-level partagée
+  // avec StructuresDestinatairesScreen (voir plus haut dans ce fichier).
 
   void _showAjouterStructureDialog(BuildContext context, Invitation inv) {
     final InvitationBloc invBloc = BlocProvider.of<InvitationBloc>(context);
@@ -1132,105 +1191,92 @@ class _InvitationDetailScreenState extends State<InvitationDetailScreen> {
               // 🎯 Réservé aux invitations créées via "Créer" (lettre officielle) ;
               // pas pertinent pour les invitations "Enregistrer" (page Envoyer).
               if (afficherExport) ...[
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Structures destinataires',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
-                            ),
-                          ),
-                          if (loading)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 8),
-                              child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-                            ),
-                          TextButton.icon(
-                            onPressed: loading ? null : () => _showAjouterStructureDialog(context, invitationAffichee),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Ajouter'),
-                            style: TextButton.styleFrom(foregroundColor: const Color.fromARGB(255, 5, 77, 35)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      if (invitationAffichee.structuresInvitees.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text(
-                            'Aucune structure destinataire pour cette invitation',
-                            style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                          ),
-                        )
-                      else
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: invitationAffichee.structuresInvitees.length,
-                          itemBuilder: (context, index) {
-                            final si = invitationAffichee.structuresInvitees[index];
-                            return Container(
-                              margin: const EdgeInsets.only(top: 6),
-                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(8),
+                Builder(builder: (context) {
+                  final structures = invitationAffichee.structuresInvitees;
+                  // 🎯 Au-delà de ce seuil, la liste inline devient trop
+                  // longue à parcourir dans la fiche : on n'affiche qu'un
+                  // aperçu + un lien vers la page dédiée (avec recherche).
+                  const int seuilPageDediee = 5;
+                  final bool listeLongue = structures.length > seuilPageDediee;
+                  final apercu = listeLongue ? structures.take(4).toList() : structures;
+
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                structures.isEmpty
+                                    ? 'Structures destinataires'
+                                    : 'Structures destinataires (${structures.length})',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
                               ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.account_balance_outlined, size: 18, color: Color.fromARGB(255, 5, 77, 35)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(si.nom, style: const TextStyle(fontSize: 13)),
-                                  ),
-                                  _badgeStatutReponse(si.statutReponse),
-                                  PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert, size: 18),
-                                    onSelected: (action) {
-                                      if (si.structureInviteeId == null) {
-                                        // 🎯 Ne devrait jamais arriver si le backend renvoie bien
-                                        // "structureInviteeId" — message explicite plutôt qu'un no-op silencieux.
-                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                          content: Text("Impossible d'identifier cette structure destinataire (id manquant)."),
-                                          backgroundColor: Colors.red,
-                                        ));
-                                        return;
-                                      }
-                                      if (action == 'RETIRER') {
-                                        context.read<InvitationBloc>().add(
-                                            SupprimerStructureInvitee(structureInviteeId: si.structureInviteeId!));
-                                      } else {
-                                        context.read<InvitationBloc>().add(ModifierStatutStructureInvitee(
-                                            structureInviteeId: si.structureInviteeId!, statutReponse: action));
-                                      }
-                                    },
-                                    itemBuilder: (context) => const [
-                                      PopupMenuItem(value: 'EN_ATTENTE', child: Text('Marquer en attente')),
-                                      PopupMenuItem(value: 'ACCEPTEE', child: Text('Marquer acceptée')),
-                                      PopupMenuItem(value: 'REFUSEE', child: Text('Marquer refusée')),
-                                      PopupMenuItem(value: 'EXCUSEE', child: Text('Marquer excusée')),
-                                      PopupMenuDivider(),
-                                      PopupMenuItem(value: 'RETIRER', child: Text('Retirer', style: TextStyle(color: Colors.red))),
-                                    ],
-                                  ),
-                                ],
+                            ),
+                            if (loading)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 8),
+                                child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
                               ),
-                            );
-                          },
+                            TextButton.icon(
+                              onPressed: loading ? null : () => _showAjouterStructureDialog(context, invitationAffichee),
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('Ajouter'),
+                              style: TextButton.styleFrom(foregroundColor: const Color.fromARGB(255, 5, 77, 35)),
+                            ),
+                          ],
                         ),
-                    ],
-                  ),
-                ),
+                        const SizedBox(height: 6),
+                        if (structures.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              'Aucune structure destinataire pour cette invitation',
+                              style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                            ),
+                          )
+                        else ...[
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: apercu.length,
+                            itemBuilder: (context, index) => structureInviteeRow(context, apercu[index]),
+                          ),
+                          if (listeLongue) ...[
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => StructuresDestinatairesScreen(inv: invitationAffichee),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.list_alt_outlined, size: 18),
+                                label: Text('Voir toutes les structures (${structures.length})'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color.fromARGB(255, 5, 65, 30),
+                                  side: const BorderSide(color: Color.fromARGB(255, 5, 65, 30), width: 0.8),
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ],
+                    ),
+                  );
+                }),
                 const SizedBox(height: 12),
               ],
 
@@ -1457,9 +1503,195 @@ BlocBuilder<AuthBloc, AuthState>(
     );
   }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Modal d'affectation d'agents
+// Page dédiée : liste complète des structures destinataires d'une invitation,
+// avec recherche et filtre par statut de réponse. Ouverte depuis la fiche
+// invitation quand la liste inline devient trop longue à parcourir.
 // ─────────────────────────────────────────────────────────────────────────────
+class StructuresDestinatairesScreen extends StatefulWidget {
+  final Invitation inv;
+  const StructuresDestinatairesScreen({super.key, required this.inv});
+
+  @override
+  State<StructuresDestinatairesScreen> createState() => _StructuresDestinatairesScreenState();
+}
+
+class _StructuresDestinatairesScreenState extends State<StructuresDestinatairesScreen> {
+  late Invitation _invAffichee;
+  String _search = '';
+  String? _filtreStatut; // null = tous
+
+  @override
+  void initState() {
+    super.initState();
+    _invAffichee = widget.inv;
+  }
+
+  void _showAjouterStructureDialog(BuildContext context, Invitation inv) {
+    final InvitationBloc invBloc = BlocProvider.of<InvitationBloc>(context);
+    final invId = inv.id;
+    final dejaLiees = inv.structuresInvitees.map((s) => s.id).toSet();
+    showDialog(
+      context: context,
+      builder: (dialogContext) => _AjouterStructureDialog(
+        invId: invId,
+        dejaLiees: dejaLiees,
+        onAjouter: (structureId) =>
+            invBloc.add(AjouterStructureInvitee(invId: invId, structureId: structureId)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 5, 65, 30),
+        foregroundColor: Colors.white,
+        title: const Text('Structures destinataires'),
+      ),
+      body: BlocConsumer<InvitationBloc, InvitationState>(
+        listener: (context, state) {
+          if (state is InvitationError) {
+            showErrorSnack(context, state.msg);
+          }
+        },
+        builder: (context, state) {
+          // 🎯 Même logique que dans InvitationDetailScreen : on ne remplace
+          // _invAffichee que quand le state concerne bien CETTE invitation,
+          // pour ne pas retomber sur une ancienne version après une action
+          // menée ailleurs dans l'app pendant que cette page est ouverte.
+          if (state is InvDetailLoaded && state.inv.id == widget.inv.id) {
+            _invAffichee = state.inv;
+          }
+          final bool loading = state is InvitationLoading;
+          final toutes = _invAffichee.structuresInvitees;
+
+          final filtrees = toutes.where((s) {
+            final matchRecherche = _search.isEmpty || s.nom.toLowerCase().contains(_search.toLowerCase());
+            final matchStatut = _filtreStatut == null || s.statutReponse == _filtreStatut;
+            return matchRecherche && matchStatut;
+          }).toList();
+
+          return Column(
+            children: [
+              // ── Barre de recherche ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: TextField(
+                  onChanged: (v) => setState(() => _search = v),
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher une structure…',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Filtres par statut de réponse ─────────────────────────────
+              SizedBox(
+                height: 40,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    _filtreChip('Tous', null),
+                    const SizedBox(width: 8),
+                    _filtreChip('En attente', 'EN_ATTENTE'),
+                    const SizedBox(width: 8),
+                    _filtreChip('Acceptée', 'ACCEPTEE'),
+                    const SizedBox(width: 8),
+                    _filtreChip('Refusée', 'REFUSEE'),
+                    const SizedBox(width: 8),
+                    _filtreChip('Excusée', 'EXCUSEE'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // ── Compteur de résultats ─────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Text(
+                      '${filtrees.length} structure${filtrees.length > 1 ? 's' : ''}'
+                      '${toutes.length != filtrees.length ? ' sur ${toutes.length}' : ''}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                    ),
+                    if (loading) ...[
+                      const SizedBox(width: 8),
+                      const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+
+              // ── Liste ──────────────────────────────────────────────────────
+              Expanded(
+                child: toutes.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Aucune structure destinataire pour cette invitation',
+                          style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                        ),
+                      )
+                    : filtrees.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'Aucun résultat pour cette recherche',
+                              style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            itemCount: filtrees.length,
+                            itemBuilder: (context, index) => structureInviteeRow(context, filtrees[index]),
+                          ),
+              ),
+            ],
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAjouterStructureDialog(context, _invAffichee),
+        backgroundColor: const Color.fromARGB(255, 5, 65, 30),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Ajouter', style: TextStyle(color: Colors.white)),
+      ),
+    );
+  }
+
+  Widget _filtreChip(String label, String? statut) {
+    final bool selectionne = _filtreStatut == statut;
+    return ChoiceChip(
+      label: Text(label, style: TextStyle(fontSize: 12, color: selectionne ? Colors.white : Colors.black87)),
+      selected: selectionne,
+      onSelected: (_) => setState(() => _filtreStatut = statut),
+      selectedColor: const Color.fromARGB(255, 5, 65, 30),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+    );
+  }
+}
+
+
 class _AffectationModal extends StatefulWidget {
   final Invitation inv;
   final List<String> initialSelectedIds;

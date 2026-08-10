@@ -307,7 +307,7 @@ class InvitationPage {
 // TICKET MODELE
 // ════════════════════════════════════════════════════════════════════
 
-enum TicketStatus   { enAttente, enCours, enPause, resolu, ferme }
+enum TicketStatus   { enAttente, enCours, resolu, ferme }
 enum TicketPriority { haute, normale, basse }
 
 extension TicketStatusExt on TicketStatus {
@@ -315,7 +315,6 @@ extension TicketStatusExt on TicketStatus {
     switch (this) {
       case TicketStatus.enAttente: return 'En attente';
       case TicketStatus.enCours:   return 'En cours';
-      case TicketStatus.enPause:   return 'En pause';
       case TicketStatus.resolu:    return 'Résolu';
       case TicketStatus.ferme:     return 'Fermé';
     }
@@ -325,7 +324,6 @@ extension TicketStatusExt on TicketStatus {
     switch (this) {
       case TicketStatus.enAttente: return 'EN_ATTENTE';
       case TicketStatus.enCours:   return 'EN_COURS';
-      case TicketStatus.enPause:   return 'EN_PAUSE';
       case TicketStatus.resolu:    return 'RESOLU';
       case TicketStatus.ferme:     return 'FERME';
     }
@@ -334,7 +332,10 @@ extension TicketStatusExt on TicketStatus {
   static TicketStatus fromApi(String? v) {
     switch (v) {
       case 'EN_COURS':   return TicketStatus.enCours;
-      case 'EN_PAUSE':   return TicketStatus.enPause;
+      // 🎯 Compatibilité avec d'anciens tickets qui auraient encore le
+      // statut EN_PAUSE en base (avant la suppression de cet état) : on
+      // les retombe simplement sur "En cours".
+      case 'EN_PAUSE':   return TicketStatus.enCours;
       case 'RESOLU':     return TicketStatus.resolu;
       case 'FERME':      return TicketStatus.ferme;
       default:           return TicketStatus.enAttente;
@@ -361,9 +362,13 @@ extension TicketPriorityExt on TicketPriority {
 
   static TicketPriority fromApi(String? v) {
     switch (v) {
-      case 'HAUTE': return TicketPriority.haute;
-      case 'BASSE': return TicketPriority.basse;
-      default:      return TicketPriority.normale;
+      case 'HAUTE': case 'ELEVEE': case 'URGENTE':
+        return TicketPriority.haute;
+      case 'BASSE': case 'FAIBLE':
+        return TicketPriority.basse;
+      case 'NORMALE': case 'MOYENNE':
+      default:
+        return TicketPriority.normale;
     }
   }
 }
@@ -759,7 +764,7 @@ class SampleData {
     ),
     Ticket(id: '033', description: 'Accès VPN bloqué', structure: 'Finances', status: TicketStatus.enAttente, priority: TicketPriority.haute, createdAt: DateTime(2026, 5, 3)),
     Ticket(id: '031', description: 'Mise à jour antivirus', structure: 'RH', status: TicketStatus.enCours, priority: TicketPriority.normale, createdAt: DateTime(2026, 5, 2)),
-    Ticket(id: '028', description: 'Écran PC — direction', structure: 'Direction', status: TicketStatus.enPause, priority: TicketPriority.normale, createdAt: DateTime(2026, 4, 30)),
+    Ticket(id: '028', description: 'Écran PC — direction', structure: 'Direction', status: TicketStatus.enCours, priority: TicketPriority.normale, createdAt: DateTime(2026, 4, 30)),
     Ticket(id: '025', description: 'Installation logiciel comptable', structure: 'Finances', status: TicketStatus.resolu, priority: TicketPriority.basse, createdAt: DateTime(2026, 4, 28)),
   ];
 

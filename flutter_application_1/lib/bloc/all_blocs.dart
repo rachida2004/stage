@@ -331,9 +331,10 @@ class UpdateStatut extends TicketEvent {
 }
 
 class AffecterAgentTkt extends TicketEvent { 
-  final String ticketId, agentId; 
-  AffecterAgentTkt(this.ticketId, this.agentId); 
-  @override List<Object?> get props => [ticketId, agentId]; 
+  final String ticketId, agentId;
+  final TicketPriority? priorite;
+  AffecterAgentTkt(this.ticketId, this.agentId, {this.priorite}); 
+  @override List<Object?> get props => [ticketId, agentId, priorite]; 
 }
 
 class EnvoyerMessage extends TicketEvent { 
@@ -479,7 +480,7 @@ class TicketBloc extends Bloc<TicketEvent, TicketState> {
       emit(TicketLoading());
       try {
         emit(TicketDetailL(await _s.affecterAgent(e.ticketId, e.agentId,
-            currentUserId: _uid)));
+            priorite: e.priorite, currentUserId: _uid)));
       } catch (err) { emit(TicketError(err.toString())); }
     });
 

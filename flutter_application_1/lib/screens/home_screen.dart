@@ -8,6 +8,7 @@ import 'dashboard_screen.dart';
 import 'invitations_screen.dart';
 import 'tickets_screen.dart';
 import 'notifications_screen.dart';
+import 'solution_screen.dart';
 import 'admin_screen.dart';
 import 'login_screen.dart';
 
@@ -49,6 +50,32 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _notifPollingTimer?.cancel();
     super.dispose();
+  }
+
+  // 🎯 Avant ce correctif, l'IndexedStack gardait chaque écran d'onglet en
+  // mémoire (BON pour les perfs) mais ne le rechargeait JAMAIS après sa
+  // toute première construction : en revenant sur "Tickets" après avoir
+  // consulté un autre onglet, la liste restait figée avec d'anciennes
+  // données tant qu'on ne faisait pas un rafraîchissement manuel (bouton
+  // ou pull-to-refresh). On redéclenche maintenant le chargement à CHAQUE
+  // sélection d'onglet, pas seulement à la première visite.
+  void _rafraichirOnglet(int index) {
+    switch (index) {
+      case 0:
+        context.read<DashboardBloc>().add(LoadDashboard());
+        break;
+      case 1:
+        context.read<InvitationBloc>().add(LoadInvitations());
+        break;
+      case 2:
+        context.read<TicketBloc>().add(LoadTickets());
+        break;
+      case 3:
+        context.read<NotifBloc>().add(LoadNotifs());
+        break;
+      // 4 (Tickets résolus, USAGER) et 5 (Admin) gèrent leur propre
+      // rechargement en interne — pas de bloc partagé à rafraîchir ici.
+    }
   }
 
   // 🛠️ FONCTION POUR AFFICHER LES INFORMATIONS DE L'UTILISATEUR
@@ -175,14 +202,14 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color _navColor = Color.fromARGB(255, 3, 71, 21);
 
   // 🎯 Indices absolus (alignés sur l'IndexedStack de _buildContent) des
-  // onglets visibles selon le rôle. Un USAGER ne doit "que créer un ticket
-  // et suivre son état" -> seuls Tickets (2) et Alertes (3) lui sont ouverts.
-  // Les autres rôles gardent Tableau de bord + Invitations + Tickets + Alertes,
-  // et ADMIN a en plus l'onglet Admin (4).
+  // onglets visibles selon le rôle. Un USAGER a Tickets (2), Alertes (3), et
+  // le nouvel écran "Mes tickets" avec solutions (4). Les autres rôles
+  // gardent Tableau de bord + Invitations + Tickets + Alertes, et ADMIN a
+  // en plus l'onglet Admin (désormais à l'index 5).
   List<int> _indicesVisibles(AuthState authState) {
     final role = authState is AuthOk ? authState.role : '';
-    if (role == 'USAGER') return [2, 3];
-    if (role == 'ADMIN') return [0, 1, 2, 3, 4];
+    if (role == 'USAGER') return [2, 3, 4];
+    if (role == 'ADMIN') return [0, 1, 2, 3, 5];
     return [0, 1, 2, 3];
   }
 
@@ -255,6 +282,11 @@ class _HomeScreenState extends State<HomeScreen> {
         label: const Text('Alertes'),
       ),
       4: const NavigationRailDestination(
+        icon: Icon(Icons.fact_check_outlined),
+        selectedIcon: Icon(Icons.fact_check),
+        label: Text('Résolus'),
+      ),
+      5: const NavigationRailDestination(
         icon: Icon(Icons.settings_outlined),
         selectedIcon: Icon(Icons.settings),
         label: Text('Admin'),
@@ -268,6 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onDestinationSelected: (i) => setState(() {
             _currentIndex = visibles[i];
             _ongletsVisites.add(_currentIndex);
+            _rafraichirOnglet(_currentIndex);
           }),
           labelType: NavigationRailLabelType.all,
           backgroundColor: _navColor,
@@ -301,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _ongletsVisites.add(indexEffectif);
 
     final Map<int, String> tousLesTitres = {
-      0: 'Tableau de bord', 1: 'Invitations', 2: 'Tickets', 3: 'Alertes', 4: 'Admin',
+      0: 'Tableau de bord', 1: 'Invitations', 2: 'Tickets', 3: 'Alertes', 4: 'Tickets résolus', 5: 'Admin',
     };
     final Map<int, NavigationDestination> toutes = {
       0: const NavigationDestination(
@@ -325,6 +358,11 @@ class _HomeScreenState extends State<HomeScreen> {
         label: 'Alertes',
       ),
       4: const NavigationDestination(
+        icon: Icon(Icons.fact_check_outlined, color: Colors.white70),
+        selectedIcon: Icon(Icons.fact_check, color: Colors.white),
+        label: 'Résolus',
+      ),
+      5: const NavigationDestination(
         icon: Icon(Icons.settings_outlined, color: Colors.white70),
         selectedIcon: Icon(Icons.settings, color: Colors.white),
         label: 'Admin',
@@ -348,6 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (i) => setState(() {
           _currentIndex = visibles[i];
           _ongletsVisites.add(_currentIndex);
+          _rafraichirOnglet(_currentIndex);
         }),
         backgroundColor: _navColor,
         indicatorColor: Colors.white24,
@@ -400,8 +439,9 @@ class _HomeScreenState extends State<HomeScreen> {
             tab(1, () => const InvitationsScreen()),
             tab(2, () => const TicketsScreen()),
             tab(3, () => const NotificationsScreen()),
+            tab(4, () => const MesTicketsSolutionsScreen()),
             estAdmin
-                ? tab(4, () => const AdminScreen())
+                ? tab(5, () => const AdminScreen())
                 : _AccesRefuse(role: authState is AuthOk ? authState.role : ''),
           ],
         );

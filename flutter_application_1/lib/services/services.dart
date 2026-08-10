@@ -241,6 +241,20 @@ class TicketService {
   final ApiClient _api;
   TicketService(this._api);
 
+  // 🎯 Base de connaissances partagée : tous les tickets résolus du système
+  // (pas seulement ceux de l'utilisateur connecté).
+  Future<List<Ticket>> getResolus() async {
+    try {
+      final res = await _api.dio.get('/api/tickets/resolus');
+      final data = res.data;
+      if (data is Map && data.containsKey('content')) {
+        return (data['content'] as List).map((e) => Ticket.fromJson(e)).toList();
+      }
+      if (data is List) return data.map((e) => Ticket.fromJson(e)).toList();
+      return [];
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
   Future<TicketPage> getAll({
     int page = 0, 
     String? search,
@@ -348,9 +362,10 @@ class TicketService {
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
-  Future<Ticket> affecterAgent(String id, String agentId, {String? currentUserId}) async {
+  Future<Ticket> affecterAgent(String id, String agentId, {TicketPriority? priorite, String? currentUserId}) async {
     try {
-      final res = await _api.affecterAgent(ticketId: int.parse(id), agentId: int.parse(agentId));
+      final res = await _api.affecterAgent(
+          ticketId: int.parse(id), agentId: int.parse(agentId), priorite: priorite?.apiValue);
       return Ticket.fromJson(res.data, currentUserId: currentUserId);
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
@@ -378,6 +393,15 @@ class AuthService {
   final ApiClient _api;
   final StorageService _storage;
   AuthService(this._api, this._storage);
+
+  // 🎯 Profil de l'utilisateur connecté (structure/service inclus),
+  // accessible à tout rôle — utilisé pour préremplir des formulaires.
+  Future<Map<String, dynamic>> monProfil() async {
+    try {
+      final res = await _api.dio.get('/api/auth/me');
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
 
   Future<AuthResponse> login(String email, String password) async {
     try {
@@ -694,6 +718,16 @@ Future<List<AppUser>> getUsers() async {
   Future<List<String>> getPermissionsDisponibles() async {
     try {
       final res = await _api.dio.get('/api/roles/permissions');
+      return (res.data as List).map((p) => p.toString()).toList();
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  /// Droits fixes (codés en dur dans SecurityConfig) pour un rôle système
+  /// donné — liste vide si le rôle est personnalisé. Purement informatif :
+  /// non modifiable depuis l'UI, contrairement aux permissions cochables.
+  Future<List<String>> getAccesFixes(String nomRole) async {
+    try {
+      final res = await _api.dio.get('/api/roles/$nomRole/acces-fixes');
       return (res.data as List).map((p) => p.toString()).toList();
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }

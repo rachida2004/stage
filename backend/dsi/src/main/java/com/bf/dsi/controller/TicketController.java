@@ -40,22 +40,53 @@ public class TicketController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String statut,
-            @RequestParam(required = false) String priorite) {
+            @RequestParam(required = false) String priorite,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
             
         StatutTicket statutEnum = (statut != null && !statut.trim().isEmpty()) ? StatutTicket.valueOf(statut.toUpperCase()) : null;
         Priorite prioriteEnum = (priorite != null && !priorite.trim().isEmpty()) ? parsePriorite(priorite) : null;
 
-        // 🎯 Un USAGER voit désormais TOUS les tickets (les siens + ceux des
-        // autres), au même titre que les autres rôles — il ne peut simplement
-        // pas les affecter ni changer leur statut (restrictions déjà en place
-        // plus bas et dans SecurityConfig).
+        // 🎯 Un USAGER ne voit QUE les tickets qu'il a lui-même créés.
+        // Un AGENT_DSI ne voit QUE les tickets qui lui sont affectés.
+        // Les autres rôles (ADMIN, SECRETAIRE) voient tous les tickets.
         Long createurId = null;
+        Long agentId = null;
+        Utilisateur demandeur = utilisateurConnecte(authHeader);
+        if (demandeur != null) {
+            boolean estUsager = demandeur.getRoles().stream().anyMatch(r -> "USAGER".equals(r.getNom()));
+            boolean estAgent = demandeur.getRoles().stream().anyMatch(r -> "AGENT_DSI".equals(r.getNom()));
+            if (estUsager) createurId = demandeur.getUserId();
+            if (estAgent) agentId = demandeur.getUserId();
+        }
 
         Page<Ticket> result = ticketRepo.findAllFiltered(
-            search, statutEnum, prioriteEnum, createurId,
+            search, statutEnum, prioriteEnum, createurId, agentId,
             PageRequest.of(page, size)
         );
         return ResponseEntity.ok(toPageResponse(result));
+    }
+
+    // 🎯 Base de connaissances partagée : TOUS les tickets résolus du
+    // système (pas seulement ceux du demandeur), accessible même à un
+    // USAGER — pour qu'il puisse voir si un problème similaire au sien a
+    // déjà été résolu, quel que soit qui l'a créé.
+    @GetMapping("/resolus")
+    public ResponseEntity<?> getResolus(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        Page<Ticket> result = ticketRepo.findAllFiltered(
+            null, StatutTicket.RESOLU, null, null, null,
+            PageRequest.of(page, size)
+        );
+        return ResponseEntity.ok(toPageResponse(result));
+    }
+
+    // 🎯 Seuls ADMIN et SECRETAIRE ont le droit de définir/modifier la
+    // priorité d'un ticket. Un USAGER (même créateur du ticket) ou un
+    // AGENT_DSI ne peuvent pas la fixer eux-mêmes.
+    private boolean estAdminOuSecretaire(Utilisateur u) {
+        return u != null && u.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equals(r.getNom()) || "SECRETAIRE".equals(r.getNom()));
     }
 
     private Utilisateur utilisateurConnecte(String authHeader) {
@@ -74,11 +105,18 @@ public class TicketController {
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> createJson(@RequestBody TicketRequest req) {
+    public ResponseEntity<?> createJson(@RequestBody TicketRequest req,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        // 🎯 La priorité n'est jamais fixée par le créateur à la création :
+        // seuls ADMIN et SECRETAIRE peuvent la définir (sinon MOYENNE par défaut).
+        Utilisateur demandeur = utilisateurConnecte(authHeader);
+        String priorite = estAdminOuSecretaire(demandeur) && req.getPriority() != null
+                ? req.getPriority() : "MOYENNE";
+
         Ticket ticket = Ticket.builder()
             .description(req.getDescription())
             .statut(StatutTicket.EN_ATTENTE)
-            .priorite(parsePriorite(req.getPriority() != null ? req.getPriority() : "MOYENNE"))
+            .priorite(parsePriorite(priorite))
             .build();
 
         if (req.getStructure() != null)
@@ -98,12 +136,18 @@ public class TicketController {
             @RequestParam(defaultValue = "MOYENNE") String priority,
             @RequestParam(required = false) List<MultipartFile> file,
             @RequestParam(required = false) Long createurId,
-            @RequestParam(required = false) String whatsapp) {
+            @RequestParam(required = false) String whatsapp,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        // 🎯 La priorité n'est jamais fixée par le créateur à la création :
+        // seuls ADMIN et SECRETAIRE peuvent la définir (sinon MOYENNE par défaut).
+        Utilisateur demandeur = utilisateurConnecte(authHeader);
+        String prioriteEffective = estAdminOuSecretaire(demandeur) ? priority : "MOYENNE";
 
         Ticket ticket = Ticket.builder()
             .description(description)
             .statut(StatutTicket.EN_ATTENTE)
-            .priorite(parsePriorite(priority))
+            .priorite(parsePriorite(prioriteEffective))
             .build();
 
         if (structure != null)
@@ -156,15 +200,19 @@ public class TicketController {
         Utilisateur connecte = utilisateurConnecte(authHeader);
         boolean estCreateur = connecte != null && ticket.getCreateur() != null
                 && connecte.getUserId().equals(ticket.getCreateur().getUserId());
-        boolean estAdmin = connecte != null && connecte.getRoles().stream()
-                .anyMatch(r -> "ADMIN".equals(r.getNom()));
-        if (!estCreateur && !estAdmin) {
+        boolean estAdminOuSecretaire = estAdminOuSecretaire(connecte);
+        if (!estCreateur && !estAdminOuSecretaire) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("message", "Seul le créateur du ticket (ou un admin) peut le modifier."));
+                    .body(Map.of("message", "Seul le créateur du ticket (ou un admin/secrétaire) peut le modifier."));
         }
 
         if (description != null && !description.isBlank()) ticket.setDescription(description);
-        if (priority != null && !priority.isBlank()) ticket.setPriorite(parsePriorite(priority));
+        // 🎯 Seuls ADMIN et SECRETAIRE peuvent changer la priorité, même le
+        // créateur du ticket n'y est pas autorisé — on ignore silencieusement
+        // le paramètre plutôt que de faire échouer la modification.
+        if (priority != null && !priority.isBlank() && estAdminOuSecretaire) {
+            ticket.setPriorite(parsePriorite(priority));
+        }
         if (whatsapp != null) ticket.setWhatsapp(whatsapp.isBlank() ? null : whatsapp);
 
         // Retrait des pièces jointes demandées (ex: image envoyée par erreur)
@@ -221,7 +269,6 @@ public class TicketController {
                 String libelleStatut = switch (saved.getStatut()) {
                     case EN_ATTENTE -> "est en attente";
                     case EN_COURS   -> "est en cours de traitement";
-                    case EN_PAUSE   -> "a été mis en pause";
                     case RESOLU     -> "a été résolu";
                     case FERME      -> "a été fermé";
                 };
@@ -252,6 +299,7 @@ public class TicketController {
     public ResponseEntity<?> affecterAgent(
             @PathVariable Long ticketId,
             @PathVariable Long agentId,
+            @RequestParam(required = false) String priorite,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
 
         // 🎯 Affectation réservée à ADMIN et SECRETAIRE — un agent n'a pas le
@@ -266,6 +314,19 @@ public class TicketController {
         }
 
         Ticket ticket = ticketService.affecterAgent(ticketId, agentId);
+
+        // 🎯 La priorité n'est plus fixée par l'usager à la création : elle
+        // est précisée ici, uniquement par ADMIN ou SECRETAIRE (un SUPERVISEUR
+        // ou un titulaire de la seule permission AFFECTER_TICKET peut affecter
+        // l'agent mais ne peut pas fixer la priorité).
+        if (priorite != null && !priorite.isBlank() && estAdminOuSecretaire(demandeur)) {
+            try {
+                ticket.setPriorite(parsePriorite(priorite));
+                ticket = ticketRepo.save(ticket);
+            } catch (Exception ignored) {
+                // priorité invalide envoyée : on ignore plutôt que de faire échouer l'affectation
+            }
+        }
 
         Utilisateur agent = utilisateurRepo.findById(agentId).orElseThrow();
         
@@ -396,11 +457,11 @@ public class TicketController {
         boolean emailOn   = appSettingService.isEmailNotificationEnabled();
         if (!interneOn && !emailOn) return;
 
-        // Notification interne (cloche) : ADMIN + AGENT_DSI, pour qu'ils voient
-        // le nouveau ticket et puissent s'en occuper.
+        // Notification interne (cloche) : ADMIN uniquement — un agent n'a
+        // pas à être notifié de CHAQUE nouveau ticket, seulement de ceux
+        // qui lui sont affectés (voir affecterAgent()).
         Map<Long, Utilisateur> destinatairesInterne = new LinkedHashMap<>();
         utilisateurRepo.findByRoles_Nom("ADMIN").forEach(u -> destinatairesInterne.put(u.getUserId(), u));
-        utilisateurRepo.findByRoles_Nom("AGENT_DSI").forEach(u -> destinatairesInterne.put(u.getUserId(), u));
 
         // Email : uniquement ADMIN + SECRETAIRE.
         Map<Long, Utilisateur> destinatairesEmail = new LinkedHashMap<>();

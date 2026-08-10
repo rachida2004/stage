@@ -161,12 +161,13 @@ public class PdfService {
                 doc.add(Chunk.NEWLINE);
             }
 
-            // ── Ampliation (gauche) / Signature (droite) ──
+           // ── Ampliation (gauche) / Signature (droite) ──
             PdfPTable bas = new PdfPTable(2);
             bas.setWidthPercentage(100);
             bas.setWidths(new float[]{2f, 3f});
             bas.setSpacingBefore(20f);
 
+            // 1. Colonne de Gauche : AMPLIATION (Vert)
             Paragraph ampliationP = new Paragraph();
             ampliationP.add(new Chunk("Ampliation\n", HEADING));
             String ampliationBrute = inv.getAmpliation();
@@ -179,21 +180,31 @@ public class PdfService {
                     }
                 }
             } else {
-                ampliationP.add(new Chunk("—", SMALL));
+                ampliationP.add(new Chunk("—\n", SMALL));
             }
             PdfPCell celluleAmpliation = new PdfPCell(ampliationP);
             celluleAmpliation.setBorder(Rectangle.NO_BORDER);
             celluleAmpliation.setVerticalAlignment(Element.ALIGN_TOP);
             bas.addCell(celluleAmpliation);
 
+            // 2. Colonne de Droite : SIGNATURE ET QUALITÉ (Rose)
             Paragraph signature = new Paragraph();
             signature.setAlignment(Element.ALIGN_CENTER);
-            signature.add(new Chunk("\n\n\n"));
-            signature.add(new Chunk(
-                inv.getSignataireNom() != null && !inv.getSignataireNom().isBlank() ? inv.getSignataireNom() + "\n" : "", HEADING));
-            signature.add(new Chunk(qualite, SMALL));
+            
+            // Qualité (ex: "Le Secrétaire général") au même niveau qu'Ampliation
+            signature.add(new Chunk(qualite + "\n", HEADING));
+            
+            // Espace réservé pour la signature manuscrite / tampon
+            signature.add(new Chunk("\n\n\n\n")); 
+            
+            // Nom du signataire (ex: "rachid barro") sous la signature
+            if (inv.getSignataireNom() != null && !inv.getSignataireNom().isBlank()) {
+                signature.add(new Chunk(inv.getSignataireNom(), NORMAL));
+            }
+
             PdfPCell celluleSignature = new PdfPCell(signature);
             celluleSignature.setBorder(Rectangle.NO_BORDER);
+            celluleSignature.setVerticalAlignment(Element.ALIGN_TOP); // Aligne le haut avec Ampliation
             bas.addCell(celluleSignature);
 
             doc.add(bas);

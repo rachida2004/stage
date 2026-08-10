@@ -92,7 +92,7 @@ public class SecurityConfig {
                 // (TicketController.changerStatut), au seul agent affecté au ticket
                 // concerné — ADMIN/SUPERVISEUR passent outre cette restriction.
                 .requestMatchers(HttpMethod.PUT, "/api/tickets/*/statut").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR")
-                .requestMatchers(HttpMethod.POST, "/api/tickets/*/affecter/**").hasAnyAuthority("ADMIN", "SUPERVISEUR","SECRETAIRE", "AFFECTER_TICKET")
+                .requestMatchers(HttpMethod.POST, "/api/tickets/*/affecter/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR","SECRETAIRE", "AFFECTER_TICKET")
                 .requestMatchers(HttpMethod.DELETE, "/api/tickets/**").hasAnyAuthority("ADMIN", "AGENT_DSI", "SUPERVISEUR")
 
                 // Tickets — USAGER peut créer (POST) et voir les siens (GET) ; +

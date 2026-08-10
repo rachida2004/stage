@@ -15,16 +15,27 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passCtrl  = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
   bool _obscure = true;
+  bool _obscureConfirm = true;
 
   @override
-  void dispose() { _emailCtrl.dispose(); _passCtrl.dispose(); super.dispose(); }
+  void dispose() { _emailCtrl.dispose(); _passCtrl.dispose(); _confirmPassCtrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<AuthBloc, AuthState>(
-      listener: (context, state) {
+      listener: (context, state) async {
         if (state is AuthOk) {
+          // 🎯 On met à jour l'userId du TicketBloc ICI, AVANT de naviguer,
+          // plutôt que de compter sur le listener séparé de _AppRouter
+          // (qui est async et arrive TROP TARD : ce pushReplacement démonte
+          // _AppRouter avant que son propre `await` ne se termine, donc
+          // updateUserId() n'était en réalité jamais appelé — c'est ça qui
+          // causait les tickets créés sans createurId).
+          final uid = await sl.storage.userId;
+          if (!context.mounted) return;
+          context.read<TicketBloc>().updateUserId(uid);
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const HomeScreen()));
         } else if (state is AuthError) {
@@ -92,6 +103,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _confirmPassCtrl,
+                              obscureText: _obscureConfirm,
+                              decoration: InputDecoration(
+                                labelText: 'Confirmer le mot de passe',
+                                hintText: '••••••••',
+                                prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                                suffixIcon: IconButton(
+                                  icon: Icon(_obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             Align(
                               alignment: Alignment.centerRight,
@@ -108,8 +133,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 20),
                             ElevatedButton(
-                              onPressed: loading ? null : () => context.read<AuthBloc>().add(
-                                LoginSubmitted(_emailCtrl.text.trim(), _passCtrl.text.trim())),
+                              onPressed: loading ? null : () {
+                                if (_passCtrl.text != _confirmPassCtrl.text) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Les mots de passe ne correspondent pas'),
+                                        backgroundColor: AppColors.danger));
+                                  return;
+                                }
+                                context.read<AuthBloc>().add(
+                                  LoginSubmitted(_emailCtrl.text.trim(), _passCtrl.text.trim()));
+                              },
                               child: loading
                                 ? const SizedBox(height: 18, width: 18,
                                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -310,6 +343,9 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
   final _prenomCtrl = TextEditingController();
   final _emailCtrl  = TextEditingController();
   final _passCtrl   = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
+  bool _obscurePass = true;
+  bool _obscureConfirmPass = true;
   final _telCtrl    = TextEditingController();
   final _iuCtrl     = TextEditingController();
 
@@ -355,7 +391,7 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
   @override
   void dispose() {
     _nomCtrl.dispose(); _prenomCtrl.dispose(); _emailCtrl.dispose();
-    _passCtrl.dispose(); _telCtrl.dispose(); _iuCtrl.dispose();
+    _passCtrl.dispose(); _confirmPassCtrl.dispose(); _telCtrl.dispose(); _iuCtrl.dispose();
     super.dispose();
   }
 
@@ -384,9 +420,32 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
                 validator: (v) => v == null || !v.contains('@') ? 'Email invalide' : null),
               const SizedBox(height: 10),
               TextFormField(controller: _passCtrl,
-                decoration: const InputDecoration(labelText: 'Mot de passe', prefixIcon: Icon(Icons.lock_outline, size: 18)),
-                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Mot de passe',
+                  prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility, size: 18),
+                    onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                  ),
+                ),
+                obscureText: _obscurePass,
                 validator: (v) => v == null || v.length < 6 ? '6 caractères minimum' : null),
+              const SizedBox(height: 10),
+              TextFormField(controller: _confirmPassCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Confirmer le mot de passe',
+                  prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureConfirmPass ? Icons.visibility_off : Icons.visibility, size: 18),
+                    onPressed: () => setState(() => _obscureConfirmPass = !_obscureConfirmPass),
+                  ),
+                ),
+                obscureText: _obscureConfirmPass,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Champ requis';
+                  if (v != _passCtrl.text) return 'Les mots de passe ne correspondent pas';
+                  return null;
+                }),
               const SizedBox(height: 10),
               TextField(controller: _telCtrl,
                 decoration: const InputDecoration(labelText: 'Téléphone', prefixIcon: Icon(Icons.phone, size: 18)),
@@ -444,7 +503,7 @@ class _CreateAccountDialogState extends State<_CreateAccountDialog> {
               const SizedBox(height: 10),
 
               TextField(controller: _iuCtrl,
-                decoration: const InputDecoration(labelText: 'Identifiant unique', prefixIcon: Icon(Icons.badge, size: 18))),
+                decoration: const InputDecoration(labelText: 'Matricule', prefixIcon: Icon(Icons.badge, size: 18))),
               // 🎯 Tout compte créé via ce formulaire est un USAGER par défaut.
               // L'attribution d'un autre rôle (AGENT_DSI, ADMIN...) se fait
               // uniquement par l'administrateur depuis Admin → Utilisateurs.

@@ -8,7 +8,10 @@ import lombok.*;
 public class Structure {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(nullable = false)
+    // 🎯 Deux structures ne peuvent pas porter le même nom (filet de
+    // sécurité au niveau base de données, en complément du contrôle
+    // applicatif fait dans StructureController).
+    @Column(nullable = false, unique = true)
     private String nom;
     private String adresse;
     private String telephone;

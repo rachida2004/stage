@@ -51,6 +51,53 @@ public class RoleController {
         return java.util.Arrays.stream(Permission.values()).map(Enum::name).collect(Collectors.toList());
     }
 
+    /**
+     * 🎯 Droits d'accès codés EN DUR par nom de rôle dans SecurityConfig
+     * (hasAnyAuthority("ADMIN", "AGENT_DSI", ...)), donc invisibles dans la
+     * table role_permissions et dans les cases à cocher de l'écran Rôles.
+     * Cette liste est maintenue manuellement — si SecurityConfig change,
+     * penser à la mettre à jour en parallèle (pas de synchronisation
+     * automatique possible : Spring Security ne permet pas d'introspecter
+     * sa chaîne de filtres au runtime).
+     */
+    private static final Map<String, List<String>> ACCES_FIXES = Map.of(
+        "ADMIN", List.of("Accès complet à toutes les fonctionnalités de l'application"),
+        "AGENT_DSI", List.of(
+            "Consulter la liste des agents",
+            "Changer le statut d'un ticket",
+            "Supprimer un ticket",
+            "Consulter et créer des tickets",
+            "Consulter les invitations",
+            "Consulter ses notifications"
+        ),
+        "SUPERVISEUR", List.of(
+            "Consulter la liste des agents",
+            "Changer le statut d'un ticket",
+            "Affecter un agent à un ticket",
+            "Supprimer un ticket",
+            "Consulter et créer des tickets",
+            "Créer et consulter les invitations",
+            "Consulter ses notifications"
+        ),
+        "SECRETAIRE", List.of(
+            "Affecter un agent à une invitation",
+            "Affecter un agent à un ticket",
+            "Consulter et créer des tickets",
+            "Créer et consulter les invitations",
+            "Consulter ses notifications"
+        ),
+        "USAGER", List.of(
+            "Créer un ticket et consulter ses propres tickets",
+            "Consulter ses notifications"
+        )
+    );
+
+    /** Droits fixes (codés en dur) pour un rôle système donné — liste vide si rôle personnalisé. */
+    @GetMapping("/{nom}/acces-fixes")
+    public List<String> accesFixes(@PathVariable String nom) {
+        return ACCES_FIXES.getOrDefault(nom.toUpperCase(), List.of());
+    }
+
     @PostMapping
     public ResponseEntity<?> creer(@RequestBody Role role) {
         if (role.getNom() == null || role.getNom().trim().isEmpty()) {

@@ -84,7 +84,7 @@ public class DashboardController {
     public ResponseEntity<?> getRecentTickets() {
         try {
             Page<com.bf.dsi.entity.Ticket> page = ticketRepo.findAllFiltered(
-                null, null, null, null, PageRequest.of(0, 5, Sort.by("dateCreation").descending()));
+                null, null, null, null, null, PageRequest.of(0, 5, Sort.by("dateCreation").descending()));
             return ResponseEntity.ok(page.getContent().stream().map(t -> Map.of(
                 "id", t.getId(),
                 "description", t.getDescription(),

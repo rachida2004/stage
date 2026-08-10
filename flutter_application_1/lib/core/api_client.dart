@@ -91,7 +91,7 @@ class ApiClient {
   /// Correspond à : PUT /api/tickets/{id}/statut
   Future<Response> changerStatut({
     required int ticketId,
-    required String statut, // ex: "EN_PAUSE", "RESOLU", "FERME"
+    required String statut, // ex: "EN_COURS", "RESOLU", "FERME"
     String? solution,
   }) async {
     try {
@@ -177,9 +177,10 @@ class ApiClient {
 
   /// 6. AFFECTER UN AGENT À UN TICKET
   /// Correspond à : POST /api/tickets/{ticketId}/affecter/{agentId}
-  Future<Response> affecterAgent({required int ticketId, required int agentId}) async {
+  Future<Response> affecterAgent({required int ticketId, required int agentId, String? priorite}) async {
     try {
-      return await dio.post('/api/tickets/$ticketId/affecter/$agentId');
+      return await dio.post('/api/tickets/$ticketId/affecter/$agentId',
+          queryParameters: priorite != null ? {'priorite': priorite} : null);
     } catch (e) {
       rethrow;
     }

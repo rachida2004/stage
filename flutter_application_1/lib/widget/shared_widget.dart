@@ -25,7 +25,6 @@ class StatusBadge extends StatelessWidget {
       case TicketStatus.enCours:   return StatusBadge(label: s.label, bg: AppColors.primaryLight, fg: AppColors.primaryDark);
       case TicketStatus.resolu:    return StatusBadge(label: s.label, bg: AppColors.successLight, fg: AppColors.success);
       case TicketStatus.ferme:     return StatusBadge(label: s.label, bg: AppColors.surface, fg: AppColors.muted);
-      case TicketStatus.enPause:   return StatusBadge(label: s.label, bg: AppColors.surface, fg: AppColors.muted);
       case TicketStatus.enAttente: return StatusBadge(label: s.label, bg: AppColors.warningLight, fg: AppColors.warning);
     }
   }

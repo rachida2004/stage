@@ -168,6 +168,10 @@ class _UsersTabState extends State<_UsersTab> {
   List<AppUser> _cachedUsers = [];
   bool _hasLoadedOnce = false;
 
+  // 🎯 Pagination côté client de la liste des utilisateurs.
+  static const int _tailleParPage = 10;
+  int _pageCourante = 0;
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<AdminBloc, AdminState>(
@@ -199,6 +203,13 @@ class _UsersTabState extends State<_UsersTab> {
             return a.isActive ? -1 : 1;
           });
 
+        // 🎯 Pagination côté client : on ne garde qu'une "page" à afficher.
+        final nbPages = (users.length / _tailleParPage).ceil().clamp(1, 999999);
+        if (_pageCourante >= nbPages) _pageCourante = nbPages - 1;
+        final debut = _pageCourante * _tailleParPage;
+        final fin = (debut + _tailleParPage).clamp(0, users.length);
+        final usersPage = users.isEmpty ? <AppUser>[] : users.sublist(debut, fin);
+
         return RefreshIndicator(
           onRefresh: () async => context.read<AdminBloc>().add(LoadUsers()),
           child: ListView(
@@ -218,17 +229,35 @@ class _UsersTabState extends State<_UsersTab> {
                   padding: EdgeInsets.symmetric(vertical: 40),
                   child: Center(child: Text('Aucun utilisateur trouvé.')),
                 )
-              else
+              else ...[
                 AppCard(
                   padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 14),
                   child: Column(
-                    children: users.map((u) => _UserTile(
+                    children: usersPage.map((u) => _UserTile(
                       user: u,
-                      isLast: u == users.last,
+                      isLast: u == usersPage.last,
                       onShowForm: widget.onShowForm,
                     )).toList(),
                   ),
                 ),
+                const SizedBox(height: 12),
+                // ── Contrôles de pagination ─────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: _pageCourante > 0 ? () => setState(() => _pageCourante--) : null,
+                    ),
+                    Text('Page ${_pageCourante + 1} / $nbPages',
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: _pageCourante < nbPages - 1 ? () => setState(() => _pageCourante++) : null,
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         );
@@ -326,11 +355,18 @@ class _RolesTabState extends State<_RolesTab> {
   };
 
   // 🎯 Libellés lisibles pour les permissions (le backend ne connaît que les
-  // noms bruts de l'enum Permission, ex: "AFFECTER_AGENT").
+  // noms bruts de l'enum Permission). Doit rester synchronisé avec
+  // com.bf.dsi.enums.Permission côté backend — toute permission absente
+  // d'ici s'affiche avec son nom brut (fallback `?? p` plus bas).
   static const _libellesPermissions = {
-    'GERER_INVITATIONS': 'Gérer les invitations (créer, enregistrer, générer une lettre)',
-    'AFFECTER_AGENT':    'Affecter un agent (invitation ou ticket)',
-    'GERER_TICKETS':     'Gérer les tickets',
+    'CREER_TICKET':           'Créer un ticket',
+    'AFFECTER_INVITATION':    'Affecter un agent à une invitation',
+    'AFFECTER_TICKET':        'Affecter un agent à un ticket',
+    'ENREGISTRER_INVITATION': "Créer / enregistrer une lettre d'invitation",
+    'VOIR_NOTIFICATION':      'Consulter ses notifications (écran Alertes)',
+    'RECEVOIR_NOTIFICATION':  'Recevoir des notifications (interne et email)',
+    'MODIFIER_PARAMETRE':     "Modifier les paramètres globaux de l'application",
+    'GERER_TICKETS':          'Gérer les tickets (changer le statut, résoudre)',
   };
 
   List<String> _permissionsCatalogue = [];
@@ -349,10 +385,24 @@ class _RolesTabState extends State<_RolesTab> {
     final estSysteme = role != null && _connus.containsKey(role.nom);
     final permsSelectionnees = Set<String>.from(role?.permissions ?? []);
 
+    // 🎯 Droits codés en dur (SecurityConfig, par nom de rôle) — purement
+    // informatif, chargé une fois à l'ouverture du dialog pour les rôles
+    // système. Ex: AGENT_DSI peut changer le statut d'un ticket même si
+    // aucune case n'est cochée ci-dessous.
+    List<String> accesFixes = [];
+    bool accesFixesCharges = !estSysteme; // pas de chargement nécessaire pour un rôle personnalisé
+
     showDialog(
       context: context,
       builder: (_) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
+        builder: (dialogContext, setDialogState) {
+          if (estSysteme && !accesFixesCharges) {
+            accesFixesCharges = true; // évite de relancer l'appel à chaque rebuild du dialog
+            sl<AdminService>().getAccesFixes(role!.nom).then((liste) {
+              if (dialogContext.mounted) setDialogState(() => accesFixes = liste);
+            }).catchError((_) {});
+          }
+          return AlertDialog(
         backgroundColor: Colors.white,
         title: Text(role == null ? 'Nouveau rôle' : 'Modifier le rôle',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -398,6 +448,38 @@ class _RolesTabState extends State<_RolesTab> {
               ),
             ],
 
+            // ── Droits fixes (codés en dur, lecture seule) ──────────────
+            if (estSysteme && accesFixes.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.lock_outline, size: 14, color: AppColors.muted),
+                        SizedBox(width: 6),
+                        Text('Droits déjà accordés par le code (non modifiables ici)',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.muted)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ...accesFixes.map((a) => Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text('•  $a', style: const TextStyle(fontSize: 12, color: Color(0xFF334155))),
+                        )),
+                  ],
+                ),
+              ),
+            ],
+
             // ── Permissions ──────────────────────────────────────────
             const SizedBox(height: 16),
             const Align(alignment: Alignment.centerLeft,
@@ -412,13 +494,19 @@ class _RolesTabState extends State<_RolesTab> {
               ..._permissionsCatalogue.map((p) => CheckboxListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-
                     controlAffinity: ListTileControlAffinity.leading,
                     title: Text(
           _libellesPermissions[p] ?? p, 
           style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
         ),
                     value: permsSelectionnees.contains(p),
+                    // 🎯 Couleurs forcées explicitement (même correctif que la
+                    // sélection de structures) : sans ça, la case à cocher
+                    // non cochée héritait d'une bordure très pâle du thème
+                    // ambiant, quasi invisible sur fond blanc.
+                    activeColor: AppColors.primary,
+                    checkColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF64748B), width: 1.6),
                     onChanged: (v) => setDialogState(() {
                       if (v == true) permsSelectionnees.add(p); else permsSelectionnees.remove(p);
                     }),
@@ -463,7 +551,8 @@ class _RolesTabState extends State<_RolesTab> {
             child: Text(role == null ? 'Créer' : 'Enregistrer'),
           ),
         ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -627,7 +716,6 @@ class _StructuresServicesTabState extends State<_StructuresServicesTab> {
                   const SnackBar(content: Text('Le nom est obligatoire')));
                 return;
               }
-              Navigator.pop(context);
               final payload = {
                 'nom': nomCtrl.text.trim(),
                 'adresse': adrCtrl.text.trim(),
@@ -641,9 +729,16 @@ class _StructuresServicesTabState extends State<_StructuresServicesTab> {
                   await sl<AdminService>().updateStructure(structure.id!, payload);
                 }
                 await widget.onRefresh();
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(structure == null ? 'Structure créée' : 'Structure modifiée'),
-                    backgroundColor: AppColors.success));
+                if (mounted) {
+                  // 🎯 On ne ferme le dialog qu'après un succès confirmé, pour
+                  // que l'utilisateur puisse corriger le nom directement en
+                  // cas de doublon (message affiché dans le catch ci-dessous)
+                  // au lieu de perdre sa saisie et devoir tout recommencer.
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(structure == null ? 'Structure créée' : 'Structure modifiée'),
+                      backgroundColor: AppColors.success));
+                }
               } catch (e) {
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Erreur : $e'), backgroundColor: AppColors.danger));
@@ -1156,25 +1251,80 @@ class _UserFormSheetState extends State<_UserFormSheet> {
       _emailCtrl.text  = u.email;
       _selectedRole    = u.role;
       _selectedRoleNom = u.role.apiValue;
-      
+
       // Initialisation en mode édition
       _initEditionData(u);
     }
   }
 
-  // Fonction pour pré-charger les données de la structure et ses services en mode édition
+  // 🎯 Fonction pour pré-charger la structure et le service de l'utilisateur
+  // en mode édition.
+  //
+  // CORRECTIF : l'ancienne version utilisait `firstWhere` sans `orElse` dans
+  // un `try/catch` VIDE — dès que `u.structure`/`u.service` ne correspondait
+  // pas EXACTEMENT (casse, espaces, valeur nulle...) à un `nom` de la liste,
+  // l'exception était avalée silencieusement et les dropdowns restaient
+  // vides, sans aucun message d'erreur pour comprendre pourquoi.
+  //
+  // Ici : comparaison normalisée (trim + lowercase), pas de catch silencieux,
+  // et log explicite si aucune correspondance n'est trouvée pour t'aider à
+  // diagnostiquer un éventuel problème de données (ex: u.structure qui
+  // contiendrait un ID au lieu d'un nom).
   void _initEditionData(AppUser u) async {
+    Structure? structureTrouvee;
+    for (final s in widget.structures) {
+      if (s.nom.trim().toLowerCase() == (u.structure ?? '').trim().toLowerCase()) {
+        structureTrouvee = s;
+        break;
+      }
+    }
+
+    if (structureTrouvee == null) {
+      debugPrint(
+        '⚠️ [UserFormSheet] Structure introuvable pour "${u.email}" : '
+        'u.structure="${u.structure}" — structures disponibles : '
+        '${widget.structures.map((s) => s.nom).toList()}',
+      );
+      return;
+    }
+
+    if (mounted) setState(() => _selectedStructure = structureTrouvee);
+
+    if (mounted) setState(() => _loadingServices = true);
     try {
-      _selectedStructure = widget.structures.firstWhere((s) => s.nom == u.structure);
-      if (_selectedStructure != null) {
-        // Appeler le service API pour récupérer les services de la structure
-        final services = await sl<AdminService>().getServicesByStructure(_selectedStructure!.id!);
+      final services = await sl<AdminService>().getServicesByStructure(structureTrouvee.id!);
+
+      Service? serviceTrouve;
+      for (final s in services) {
+        if (s.nom.trim().toLowerCase() == (u.service ?? '').trim().toLowerCase()) {
+          serviceTrouve = s;
+          break;
+        }
+      }
+
+      if (serviceTrouve == null) {
+        debugPrint(
+          '⚠️ [UserFormSheet] Service introuvable pour "${u.email}" : '
+          'u.service="${u.service}" — services disponibles pour '
+          '"${structureTrouvee.nom}" : ${services.map((s) => s.nom).toList()}',
+        );
+      }
+
+      if (mounted) {
         setState(() {
           _filteredServices = services;
-          _selectedService  = _filteredServices.firstWhere((s) => s.nom == u.service);
+          _selectedService  = serviceTrouve;
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors du chargement des services : $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingServices = false);
+    }
   }
 
   // 🎯 C'est ici qu'on appelle l'API lors du changement de structure
@@ -1209,6 +1359,162 @@ class _UserFormSheetState extends State<_UserFormSheet> {
     super.dispose();
   }
 
+  // ── Champ "Structure" avec recherche par saisie ──────────────────
+  //
+  // 🎯 La `key` inclut l'id de la structure sélectionnée : quand elle
+  // change (sélection manuelle OU pré-remplissage async en mode édition),
+  // Flutter recrée le widget Autocomplete avec le bon `initialValue`
+  // au lieu de garder l'ancien texte affiché dans son controller interne.
+  Widget _buildStructureAutocomplete() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Autocomplete<Structure>(
+          key: ValueKey('structure-${_selectedStructure?.id}'),
+          initialValue: TextEditingValue(text: _selectedStructure?.nom ?? ''),
+          displayStringForOption: (s) => s.nom,
+          optionsBuilder: (TextEditingValue value) {
+            final query = value.text.trim().toLowerCase();
+            if (query.isEmpty) return widget.structures;
+            return widget.structures.where((s) => s.nom.toLowerCase().contains(query));
+          },
+          onSelected: _onStructureChanged,
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              decoration: const InputDecoration(
+                labelText: 'Structure',
+                hintText: 'Tapez pour rechercher...',
+                prefixIcon: Icon(Icons.domain, size: 18),
+              ),
+              // 🎯 On valide sur la valeur SÉLECTIONNÉE (_selectedStructure),
+              // pas sur le texte brut : ça évite qu'un texte tapé sans être
+              // choisi dans la liste soit accepté comme une vraie structure.
+              validator: (_) => _selectedStructure == null ? 'Sélectionnez une structure' : null,
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: Colors.white,
+                elevation: 4,
+                borderRadius: BorderRadius.circular(8),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: 220, maxWidth: constraints.maxWidth),
+                  child: options.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text('Aucune structure trouvée', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final s = options.elementAt(index);
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                s.nom,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              onTap: () => onSelected(s),
+                            );
+                          },
+                        ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ── Champ "Service" avec recherche par saisie ────────────────────
+  //
+  // Filtré par _filteredServices (déjà limité à la structure choisie par
+  // _onStructureChanged / _initEditionData). Désactivé tant qu'aucune
+  // structure n'est sélectionnée.
+  Widget _buildServiceAutocomplete() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Autocomplete<Service>(
+          key: ValueKey('service-${_selectedStructure?.id}-${_selectedService?.id}'),
+          initialValue: TextEditingValue(text: _selectedService?.nom ?? ''),
+          displayStringForOption: (s) => s.nom,
+          optionsBuilder: (TextEditingValue value) {
+            if (_selectedStructure == null) return const Iterable<Service>.empty();
+            final query = value.text.trim().toLowerCase();
+            if (query.isEmpty) return _filteredServices;
+            return _filteredServices.where((s) => s.nom.toLowerCase().contains(query));
+          },
+          onSelected: (s) => setState(() => _selectedService = s),
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              enabled: _selectedStructure != null,
+              decoration: InputDecoration(
+                labelText: 'Service',
+                prefixIcon: const Icon(Icons.miscellaneous_services, size: 18),
+                hintText: _loadingServices
+                    ? 'Chargement des services...'
+                    : _selectedStructure == null
+                        ? 'Choisissez d\'abord une structure'
+                        : 'Tapez pour rechercher...',
+              ),
+              validator: (_) => _selectedService == null ? 'Sélectionnez un service' : null,
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: Colors.white,
+                elevation: 4,
+                borderRadius: BorderRadius.circular(8),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: 220, maxWidth: constraints.maxWidth),
+                  child: options.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text('Aucun service trouvé', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final s = options.elementAt(index);
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                s.nom,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              onTap: () => onSelected(s),
+                            );
+                          },
+                        ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
@@ -1224,7 +1530,8 @@ class _UserFormSheetState extends State<_UserFormSheet> {
     if (_isEditing) {
       context.read<AdminBloc>().add(UpdateUser(widget.user!.id, payload));
     } else {
-      payload['password'] = 'Password123!';
+      // 🎯 Pas de mot de passe saisi ici : le serveur en génère un
+      // automatiquement et l'envoie par email au nouvel utilisateur.
       context.read<AdminBloc>().add(CreateUser(payload));
     }
     Navigator.pop(context);
@@ -1270,40 +1577,16 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                   validator: (v) => v == null || !v.contains('@') ? 'Email invalide' : null,
                 ),
                 const SizedBox(height: 12),
+                // 🎯 Pas de champ mot de passe ici : le serveur en génère un
+                // automatiquement à la création et l'envoie par email au
+                // nouvel utilisateur, qui s'en sert pour se connecter.
 
-                // Dropdown Structure
-                DropdownButtonFormField<Structure>(
-                  value: _selectedStructure,
-                  isExpanded: true,
-                  menuMaxHeight: 200,
-                  decoration: const InputDecoration(labelText: 'Structure', prefixIcon: Icon(Icons.domain, size: 18)),
-                  items: widget.structures
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: _onStructureChanged,
-                  validator: (v) => v == null ? 'Sélectionnez une structure' : null,
-                ),
+                // Champ Structure — recherche par saisie (Autocomplete)
+                _buildStructureAutocomplete(),
                 const SizedBox(height: 12),
 
-                // Dropdown Service filtré dynamiquement
-                DropdownButtonFormField<Service>(
-                  value: _selectedService,
-                  isExpanded: true,
-                  menuMaxHeight: 200,
-                  decoration: const InputDecoration(labelText: 'Service', prefixIcon: Icon(Icons.miscellaneous_services, size: 18)),
-                  hint: Text(_loadingServices
-                      ? 'Chargement des services...'
-                      : _selectedStructure == null
-                          ? 'Choisissez d\'abord une structure'
-                          : _filteredServices.isEmpty
-                              ? 'Aucun service pour cette structure'
-                              : 'Sélectionner un service'),
-                  items: _filteredServices
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: _filteredServices.isEmpty ? null : (v) => setState(() => _selectedService = v),
-                  validator: (v) => v == null ? 'Sélectionnez un service' : null,
-                ),
+                // Champ Service — recherche par saisie, filtré par la structure choisie
+                _buildServiceAutocomplete(),
                 const SizedBox(height: 12),
 
                 DropdownButtonFormField<String>(

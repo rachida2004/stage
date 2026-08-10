@@ -109,6 +109,31 @@ class _InvitationScreenState extends State<InvitationScreen> {
 
   void _removeFile(int index) => setState(() => _selectedFiles.removeAt(index));
 
+  // 🎯 Ouvre une bottom sheet dédiée (avec recherche) pour choisir les
+  // structures destinataires, au lieu d'afficher toutes les structures en
+  // vrac dans le formulaire (illisible dès qu'il y en a beaucoup).
+  Future<void> _ouvrirSelectionStructures() async {
+    final resultat = await showModalBottomSheet<Set<int>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _SelectionStructuresSheet(
+        structures: _structures,
+        selectionInitiale: _structuresDestinatairesIds,
+      ),
+    );
+    if (resultat != null) {
+      setState(() {
+        _structuresDestinatairesIds
+          ..clear()
+          ..addAll(resultat);
+      });
+    }
+  }
+
   String _fmt(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
@@ -226,31 +251,41 @@ class _InvitationScreenState extends State<InvitationScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2)))
               else if (_structures.isEmpty)
                 const Text('Aucune structure trouvée.', style: TextStyle(color: AppColors.muted))
-              else
-                Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: _structures.map((s) {
-                    final selected = s.id != null && _structuresDestinatairesIds.contains(s.id);
-                    return FilterChip(
-                      label: Text(s.nom),
-                      selected: selected,
-                      backgroundColor: Colors.white,
-                      selectedColor: AppColors.primary.withOpacity(0.15),
-                      checkmarkColor: AppColors.primary,
-                      labelStyle: TextStyle(
-                        color: selected ? AppColors.primary : Colors.black87,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                      side: BorderSide(
-                        color: selected ? AppColors.primary : const Color(0xFFCBD5E1),
-                      ),
-                      onSelected: (v) {
-                        if (s.id == null) return;
-                        setState(() { if (v) _structuresDestinatairesIds.add(s.id!); else _structuresDestinatairesIds.remove(s.id!); });
-                      },
-                    );
-                  }).toList(),
+              else ...[
+                OutlinedButton.icon(
+                  onPressed: _ouvrirSelectionStructures,
+                  icon: const Icon(Icons.add_business_outlined, size: 18),
+                  label: Text(
+                    _structuresDestinatairesIds.isEmpty
+                        ? 'Sélectionner des structures'
+                        : 'Modifier la sélection (${_structuresDestinatairesIds.length})',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary, width: 0.8),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    alignment: Alignment.centerLeft,
+                  ),
                 ),
+                if (_structuresDestinatairesIds.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6, runSpacing: 6,
+                    children: _structures
+                        .where((s) => s.id != null && _structuresDestinatairesIds.contains(s.id))
+                        .map((s) => Chip(
+                              label: Text(s.nom, style: const TextStyle(fontSize: 12)),
+                              backgroundColor: AppColors.primary.withOpacity(0.1),
+                              labelStyle: const TextStyle(color: AppColors.primary),
+                              deleteIcon: const Icon(Icons.close, size: 16),
+                              onDeleted: () => setState(() => _structuresDestinatairesIds.remove(s.id)),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ))
+                        .toList(),
+                  ),
+                ],
+              ],
               const SizedBox(height: 16),
 
               // ── Objet et dates ────────────────────────────────────
@@ -398,6 +433,168 @@ class _InvitationScreenState extends State<InvitationScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom sheet dédiée à la sélection des structures destinataires, avec
+// recherche — ouverte depuis le formulaire de création de lettre pour éviter
+// d'afficher toutes les structures en vrac (illisible dès qu'il y en a
+// beaucoup, cf. capture d'écran).
+// ─────────────────────────────────────────────────────────────────────────────
+class _SelectionStructuresSheet extends StatefulWidget {
+  final List<Structure> structures;
+  final Set<int> selectionInitiale;
+  const _SelectionStructuresSheet({required this.structures, required this.selectionInitiale});
+
+  @override
+  State<_SelectionStructuresSheet> createState() => _SelectionStructuresSheetState();
+}
+
+class _SelectionStructuresSheetState extends State<_SelectionStructuresSheet> {
+  late Set<int> _selection;
+  String _recherche = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selection = {...widget.selectionInitiale};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtrees = widget.structures
+        .where((s) => _recherche.isEmpty || s.nom.toLowerCase().contains(_recherche.toLowerCase()))
+        .toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 6),
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Structures destinataires',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    ),
+                    Text(
+                      '${_selection.length} sélectionnée${_selection.length > 1 ? "s" : ""}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  onChanged: (v) => setState(() => _recherche = v),
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher une structure…',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    isDense: true,
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: filtrees.isEmpty
+                    ? const Center(
+                        child: Text('Aucun résultat', style: TextStyle(color: AppColors.muted)),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        itemCount: filtrees.length,
+                        itemBuilder: (context, index) {
+                          final s = filtrees[index];
+                          final selected = s.id != null && _selection.contains(s.id);
+                          return CheckboxListTile(
+                            value: selected,
+                            dense: true,
+                            tileColor: Colors.white,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            // 🎯 Couleurs forcées explicitement (au lieu de dépendre
+                            // du thème ambiant) : le texte et la case à cocher
+                            // apparaissaient trop pâles ("blanc sur blanc") sur
+                            // certains rendus, les rendant illisibles.
+                            title: Text(
+                              s.nom,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF1E293B),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            activeColor: AppColors.primary,
+                            checkColor: Colors.white,
+                            side: const BorderSide(color: Color(0xFF64748B), width: 1.6),
+                            onChanged: (v) {
+                              if (s.id == null) return;
+                              setState(() {
+                                if (v == true) {
+                                  _selection.add(s.id!);
+                                } else {
+                                  _selection.remove(s.id!);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context, _selection),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(255, 6, 69, 21),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: Text(
+                        _selection.isEmpty
+                            ? 'Valider la sélection'
+                            : 'Valider (${_selection.length} structure${_selection.length > 1 ? "s" : ""})',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

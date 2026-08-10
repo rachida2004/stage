@@ -27,6 +27,8 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder encoder;
     private final JavaMailSender mailSender;
+    private final StructureRepository structureRepo;
+    private final ServiceRepository serviceRepo;
 
     // Stockage en mémoire des tokens de reset (en prod : table reset_token en base)
     // token → { email, expiry }
@@ -61,6 +63,48 @@ public class AuthController {
     }
 
     @SuppressWarnings("null")
+    // 🎯 Profil de l'utilisateur connecté — accessible à TOUT rôle (contrairement
+    // à /api/admin/users qui est réservé à ADMIN). Utilisé notamment pour
+    // préremplir la structure/service lors de la création d'un ticket.
+    @GetMapping("/me")
+    public ResponseEntity<?> monProfil(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Non authentifié."));
+        }
+        Utilisateur u;
+        try {
+            String email = jwtUtil.extractEmail(authHeader.replace("Bearer ", ""));
+            u = utilisateurRepo.findByEmail(email).orElse(null);
+        } catch (Exception e) {
+            u = null;
+        }
+        if (u == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Session invalide."));
+
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", u.getUserId());
+        m.put("nom", u.getNom());
+        m.put("prenom", u.getPrenom());
+        m.put("email", u.getEmail());
+        m.put("telephone", u.getTelephone());
+        m.put("structure", u.getStructure() != null ? u.getStructure().getNom() : null);
+        m.put("structureId", u.getStructure() != null ? u.getStructure().getId() : null);
+        m.put("service", u.getService() != null ? u.getService().getNom() : null);
+        m.put("serviceId", u.getService() != null ? u.getService().getId() : null);
+        return ResponseEntity.ok(m);
+    }
+
+    // 🎯 Mot de passe aléatoire (10 caractères, lettres + chiffres) utilisé
+    // quand un admin crée un compte sans en saisir un lui-même.
+    private String genererMotDePasseAleatoire() {
+        String caracteres = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 10; i++) {
+            sb.append(caracteres.charAt(random.nextInt(caracteres.length())));
+        }
+        return sb.toString();
+    }
+
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest req) {
         if (req.getNom() == null || req.getNom().isBlank())
@@ -75,17 +119,58 @@ public class AuthController {
         Role role = roleRepo.findByNom(req.getRole() != null ? req.getRole() : "USAGER")
             .orElseGet(() -> roleRepo.findByNom("USAGER").orElseThrow());
 
+        // 🎯 Quand un admin crée un utilisateur, il ne saisit plus de mot de
+        // passe (formulaire simplifié) : on en génère un aléatoire ici, et
+        // il est envoyé par email au nouvel utilisateur juste après.
+        String motDePasseClair = (req.getPassword() != null && !req.getPassword().isBlank())
+            ? req.getPassword()
+            : genererMotDePasseAleatoire();
+
         Utilisateur u = Utilisateur.builder()
             .nom(req.getNom())
             .prenom(req.getPrenom())
             .email(req.getEmail())
-            .motDePasse(encoder.encode(req.getPassword()))
+            .motDePasse(encoder.encode(motDePasseClair))
             .telephone(req.getTelephone())
             .iu(req.getIdentifiantUnique())
             .actif(true)
             .roles(new HashSet<>(Set.of(role)))
             .build();
+        // 🎯 La structure/service choisis à l'inscription n'étaient jusqu'ici
+        // jamais sauvegardés, ce qui empêchait tout préremplissage ultérieur
+        // (création de ticket, etc.) puisqu'ils restaient NULL en base.
+        if (req.getStructure() != null && !req.getStructure().isBlank()) {
+            structureRepo.findByNom(req.getStructure()).ifPresent(u::setStructure);
+        }
+        if (req.getService() != null && !req.getService().isBlank()) {
+            serviceRepo.findByNom(req.getService()).ifPresent(u::setService);
+        }
         utilisateurRepo.save(u);
+
+        // 🎯 L'utilisateur nouvellement créé (par lui-même ou par un admin)
+        // reçoit ses identifiants de connexion par email — utile surtout
+        // quand un admin crée un compte pour quelqu'un d'autre (agent,
+        // secrétaire, usager), qui n'a alors aucun autre moyen de connaître
+        // son mot de passe.
+        try {
+            SimpleMailMessage msg = new SimpleMailMessage();
+            msg.setFrom("noreply@dsi.gov.bf");
+            msg.setTo(u.getEmail());
+            msg.setSubject("DSI Connect — Votre compte a été créé");
+            msg.setText(
+                "Bonjour " + u.getNom() + ",\n\n" +
+                "Votre compte DSI Connect a été créé avec succès. Voici vos identifiants de connexion :\n\n" +
+                "Email : " + u.getEmail() + "\n" +
+                "Mot de passe : " + motDePasseClair + "\n\n" +
+                "Nous vous recommandons de changer ce mot de passe dès votre première connexion.\n\n" +
+                "— DSI Ministère, Burkina Faso"
+            );
+            mailSender.send(msg);
+        } catch (Exception e) {
+            // On n'interrompt pas la création du compte si l'envoi échoue
+            // (ex: SMTP indisponible) — l'utilisateur peut toujours se
+            // connecter avec les identifiants qu'il/l'admin a saisis.
+        }
 
         String token = jwtUtil.generate(u.getEmail(), role.getNom());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(

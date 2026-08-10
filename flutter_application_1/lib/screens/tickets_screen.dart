@@ -24,6 +24,16 @@ class _TicketsScreenState extends State<TicketsScreen> {
   String _search = '';
   TicketStatus? _filterStatus;
 
+  // 🎯 Le TicketBloc est PARTAGÉ avec l'écran de détail (changement de
+  // statut, affectation, messages...). Ouvrir un ticket émet des états
+  // (TicketDetailL, TicketLoading, TicketError...) sur ce même bloc, et
+  // cet écran liste — gardé vivant en mémoire par l'IndexedStack — se
+  // reconstruit à CHAQUE fois, même s'il n'est pas affiché. Sans ce cache,
+  // on perdait la liste ("Aucun ticket trouvé") dès qu'on ouvrait un
+  // ticket, pas seulement en y revenant. Même correctif que celui déjà
+  // appliqué à AdminBloc via _lastKnownUsers.
+  List<Ticket> _lastKnownTickets = [];
+
   @override
   void initState() {
     super.initState();
@@ -45,14 +55,26 @@ class _TicketsScreenState extends State<TicketsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<TicketBloc, TicketState>(
+    return BlocConsumer<TicketBloc, TicketState>(
+      // 🎯 Une erreur venant d'une action sur l'écran détail (ex. affectation
+      // refusée) ne doit pas casser l'écran liste en plein écran d'erreur
+      // s'il affiche déjà des tickets — juste un avertissement discret.
+      listener: (context, state) {
+        if (state is TicketError && _lastKnownTickets.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.msg), backgroundColor: AppColors.danger),
+          );
+        }
+      },
       builder: (context, state) {
-        List<Ticket> allTickets = [];
         bool isLoading = state is TicketLoading;
 
         if (state is TicketsLoaded) {
-          allTickets = state.page.items;
-        } else if (state is TicketError) {
+          _lastKnownTickets = state.page.items;
+        } else if (state is TicketError && _lastKnownTickets.isEmpty) {
+          // 🎯 Écran d'erreur plein écran uniquement si on n'a encore AUCUNE
+          // donnée à afficher (échec du tout premier chargement) — sinon la
+          // liste déjà connue reste visible (cf. listener ci-dessus).
           final pasDeDroits = state.msg.contains('droits nécessaires') || state.msg.contains('session a expiré');
           return Scaffold(
             appBar: AppBar(title: const Text('Tickets')),
@@ -68,6 +90,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
             ),
           );
         }
+        // 🎯 Pour tout autre état (TicketDetailL, TicketSuccess,
+        // TicketDeletedSuccess, TicketInitial...) émis pendant que cet écran
+        // liste est en arrière-plan, on continue d'afficher la dernière
+        // liste connue au lieu de la vider.
+        final allTickets = _lastKnownTickets;
 
         final filtered = _applyFilters(allTickets);
 
@@ -135,8 +162,17 @@ class _TicketsScreenState extends State<TicketsScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (ctx, i) => _TicketCard(
                           ticket: filtered[i],
+                          // 🎯 On recharge systématiquement la liste au retour de
+                          // l'écran détail (Navigator.pop), qu'un changement ait
+                          // eu lieu ou non — changement de statut, affectation,
+                          // modification, message, tout ça se passe dans le
+                          // détail sans jamais mettre à jour la liste sous-jacente
+                          // tant qu'on ne revient pas dessus.
                           onTap: () => Navigator.push(ctx,
-                            MaterialPageRoute(builder: (_) => TicketDetailScreen(ticket: filtered[i]))),
+                            MaterialPageRoute(builder: (_) => TicketDetailScreen(ticket: filtered[i])))
+                              .then((_) {
+                            if (ctx.mounted) ctx.read<TicketBloc>().add(LoadTickets());
+                          }),
                         ),
                       ),
                     ),
@@ -430,7 +466,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 child: const Text('Annuler'),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 8, 65, 29)),
                 onPressed: () {
                   if (solutionCtrl.text.trim().isEmpty) {
                     setState(() => erreur = 'La solution est obligatoire.');
@@ -454,6 +490,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
   void _ouvrirDialogueAffectation(BuildContext context, String ticketId) {
     AppUser? agentSelectionne;
+    // 🎯 La priorité du ticket est désormais précisée ici, par le
+    // secrétaire ou l'admin, au moment de l'affectation — plus par l'usager
+    // à la création.
+    TicketPriority prioriteSelectionnee = TicketPriority.normale;
     List<AppUser> agentsDSI = [];
     bool loading = true;
 
@@ -486,31 +526,48 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                   ? const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()))
                   : agentsDSI.isEmpty
                       ? const Text("Aucun agent DSI disponible.")
-                      : DropdownButtonFormField<AppUser>(
-                          decoration: const InputDecoration(
-                            labelText: "Agent DSI",
-                            border: OutlineInputBorder(),
+                      : Column(mainAxisSize: MainAxisSize.min, children: [
+                          DropdownButtonFormField<AppUser>(
+                            decoration: const InputDecoration(
+                              labelText: "Agent DSI",
+                              border: OutlineInputBorder(),
+                            ),
+                            isExpanded: true,
+                            menuMaxHeight: 250,
+                            value: agentSelectionne,
+                            items: agentsDSI
+                                .map((u) => DropdownMenuItem<AppUser>(
+                                      value: u,
+                                      child: Text(
+                                        '${u.nom} ${u.prenom ?? ''}'.trim(),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ))
+                                .toList(),
+                            onChanged: (val) => setDialogState(() => agentSelectionne = val),
                           ),
-                          isExpanded: true,
-                          menuMaxHeight: 250,
-                          value: agentSelectionne,
-                          items: agentsDSI
-                              .map((u) => DropdownMenuItem<AppUser>(
-                                    value: u,
-                                    child: Text(
-                                      '${u.nom} ${u.prenom ?? ''}'.trim(),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ))
-                              .toList(),
-                          onChanged: (val) => setDialogState(() => agentSelectionne = val),
-                        ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<TicketPriority>(
+                            decoration: const InputDecoration(
+                              labelText: "Priorité",
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                            ),
+                            isExpanded: true,
+                            value: prioriteSelectionnee,
+                            items: TicketPriority.values
+                                .map((p) => DropdownMenuItem(value: p, child: Text(p.name.toUpperCase())))
+                                .toList(),
+                            onChanged: (val) => setDialogState(() => prioriteSelectionnee = val!),
+                          ),
+                        ]),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Annuler")),
                 ElevatedButton(
                   onPressed: agentSelectionne == null ? null : () {
                     context.read<TicketBloc>().add(
-                        AffecterAgentTkt(ticketId, agentSelectionne!.id.toString()));
+                        AffecterAgentTkt(ticketId, agentSelectionne!.id.toString(),
+                            priorite: prioriteSelectionnee));
                     Navigator.pop(dialogContext);
                   },
                   child: const Text("Affecter"),
@@ -547,7 +604,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       listener: (context, state) {
         if (state is TicketDeletedSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Ticket supprimé avec succès')),
+            const SnackBar(content: Text('Ticket supprimé avec succès', style: TextStyle(color: Color.fromARGB(255, 164, 189, 179), fontWeight: FontWeight.w500)), backgroundColor: Color.fromARGB(255, 1, 61, 23), duration: Duration(seconds: 2))
           );
           context.read<TicketBloc>().add(LoadTickets());
           Navigator.pop(context);
@@ -584,11 +641,20 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               title: Text('#${t.id}', style: const TextStyle(fontSize: 15)),
               actions: [
                 // Bouton WhatsApp dans l'AppBar si numéro disponible
+                // 🎯 L'usager ne doit pas voir le lien WhatsApp (réservé au
+                // personnel DSI qui a besoin de contacter l'usager, pas
+                // l'inverse).
                 if (whatsapp != null && whatsapp.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.chat, color: Color(0xFF25D366)),
-                    tooltip: 'Contacter sur WhatsApp',
-                    onPressed: () => _ouvrirWhatsApp(context, whatsapp),
+                  BlocBuilder<AuthBloc, AuthState>(
+                    builder: (_, authState) {
+                      final role = authState is AuthOk ? authState.role : '';
+                      if (role == 'USAGER') return const SizedBox.shrink();
+                      return IconButton(
+                        icon: const Icon(Icons.chat, color: Color.fromARGB(255, 3, 50, 20)),
+                        tooltip: 'Contacter sur WhatsApp',
+                        onPressed: () => _ouvrirWhatsApp(context, whatsapp),
+                      );
+                    },
                   ),
                 // 🎯 Actions selon le rôle :
                 // USAGER      → peut modifier/supprimer SON PROPRE ticket
@@ -596,7 +662,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 //               crayon ici ; bouton Modifier/Supprimer
                 //               dupliqués en bas de page pour visibilité)
                 // SECRETAIRE  → peut affecter un agent uniquement
-                // Autres      → menu complet (pause, résolu, fermer, supprimer)
+                // Autres      → menu complet (résolu, fermer, supprimer) —
+                //               PLUS D'OPTION "Mettre en pause" : un ticket
+                //               affecté reste "En cours" jusqu'à résolution.
                 BlocBuilder<AuthBloc, AuthState>(
                   builder: (_, authState) {
                     final role = authState is AuthOk ? authState.role : '';
@@ -628,7 +696,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     return PopupMenuButton<String>(
                       onSelected: (v) {
                         if (v == 'assign') _ouvrirDialogueAffectation(context, t.id);
-                        else if (v == 'pause') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause));
                         else if (v == 'resolve') _demanderSolutionEtResoudre(context, t.id);
                         else if (v == 'close') context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.ferme));
                         else if (v == 'delete') _showDeleteConfirmationDialog(context, t.id);
@@ -641,7 +708,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         return [
                           if (role == 'ADMIN')
                             const PopupMenuItem(value: 'assign', child: Text('Affecter un agent')),
-                          const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
                           const PopupMenuItem(value: 'resolve', child: Text('Marquer résolu')),
                           const PopupMenuItem(value: 'close', child: Text('Fermer le ticket')),
                           if (peutSupprimer) ...[
@@ -684,7 +750,13 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     ]),
 
                     // ── Contact WhatsApp ────────────────────────────────
-                    if (whatsapp != null && whatsapp.isNotEmpty) ...[
+                    // 🎯 L'usager ne doit pas voir le lien WhatsApp.
+                    if (whatsapp != null && whatsapp.isNotEmpty)
+                      BlocBuilder<AuthBloc, AuthState>(
+                        builder: (_, authState) {
+                          final role = authState is AuthOk ? authState.role : '';
+                          if (role == 'USAGER') return const SizedBox.shrink();
+                          return Column(children: [
                       const SizedBox(height: 10),
                       InkWell(
                         onTap: () => _ouvrirWhatsApp(context, whatsapp),
@@ -709,7 +781,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                           ]),
                         ),
                       ),
-                    ],
+                          ]);
+                        },
+                      ),
 
                     // ── Pièces jointes (galerie d'aperçu) ──────────────
                     if (t.attachments.isNotEmpty || (t.attachmentUrl != null && t.attachmentUrl!.isNotEmpty)) ...[
@@ -738,7 +812,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppColors.successLight,
+                          color: const Color.fromARGB(255, 2, 58, 22),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: AppColors.success.withOpacity(0.3)),
                         ),
@@ -757,7 +831,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     const SizedBox(height: 12),
 
                     // ── Boutons d'action bas de page ────────────────────
-                    // USAGER : pas de gestion du cycle de vie (pause/résolu),
+                    // USAGER : pas de gestion du cycle de vie (résolu/fermé),
                     // mais peut modifier/supprimer SON PROPRE ticket tant
                     // qu'il n'est pas résolu/fermé.
                     // SECRETAIRE : ne gère pas non plus le cycle de vie.
@@ -803,25 +877,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                             (t.agentAssigne != null && t.agentAssigne!.id == sl<StorageService>().cachedUserId);
 
                         return Column(children: [
-                          Row(children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => context.read<TicketBloc>().add(UpdateStatut(t.id, TicketStatus.enPause)),
-                                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
-                                child: const Text('En pause', style: TextStyle(fontSize: 12)),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () => _demanderSolutionEtResoudre(context, t.id),
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.success,
-                                    padding: const EdgeInsets.symmetric(vertical: 10)),
-                                child: const Text('Résolu', style: TextStyle(fontSize: 12, color: Colors.white)),
-                              ),
-                            ),
-                          ]),
+                          // 🎯 Plus d'état "En pause" : un ticket affecté reste
+                          // "En cours" jusqu'à sa résolution.
+                          ElevatedButton(
+                            onPressed: () => _demanderSolutionEtResoudre(context, t.id),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.success,
+                                padding: const EdgeInsets.symmetric(vertical: 10)),
+                            child: const Text('Marquer résolu', style: TextStyle(fontSize: 12, color: Colors.white)),
+                          ),
                           if (peutSupprimer) ...[
                             const SizedBox(height: 8),
                             // ── Bouton supprimer centré ─────────────────────
@@ -1079,10 +1143,53 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
   bool _loadingStructures = true;
   bool _loadingServices = false;
 
+  // 🎯 Structure/service de l'utilisateur connecté, pour préremplissage
+  // automatique dès que les listes correspondantes sont chargées.
+  String? _structureNomUtilisateur;
+  String? _serviceNomUtilisateur;
+
   @override
   void initState() {
     super.initState();
     _chargerStructures();
+    _chargerProfilUtilisateur();
+  }
+
+  Future<void> _chargerProfilUtilisateur() async {
+    try {
+      final profil = await sl<AuthService>().monProfil();
+      _structureNomUtilisateur = profil['structure']?.toString();
+      _serviceNomUtilisateur = profil['service']?.toString();
+      final telephone = profil['telephone']?.toString();
+      if (telephone != null && telephone.isNotEmpty && _whatsappCtrl.text.isEmpty) {
+        _whatsappCtrl.text = telephone;
+      }
+      _tenterPreremplissageStructure();
+    } catch (_) {
+      // Si la récupération du profil échoue, l'usager choisit simplement
+      // manuellement — ce n'est pas bloquant pour créer un ticket.
+    }
+  }
+
+  void _tenterPreremplissageStructure() {
+    if (_structureSelectionnee != null || _structureNomUtilisateur == null || _structures.isEmpty) return;
+    Structure? match;
+    for (final s in _structures) {
+      if (s.nom == _structureNomUtilisateur) { match = s; break; }
+    }
+    if (match != null && match.id != null) {
+      setState(() => _structureSelectionnee = match);
+      _chargerServices(match.id!);
+    }
+  }
+
+  void _tenterPreremplissageService() {
+    if (_serviceSelectionne != null || _serviceNomUtilisateur == null || _services.isEmpty) return;
+    Service? match;
+    for (final s in _services) {
+      if (s.nom == _serviceNomUtilisateur) { match = s; break; }
+    }
+    if (match != null) setState(() => _serviceSelectionne = match);
   }
 
   @override
@@ -1093,20 +1200,31 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
   }
 
   Future<void> _chargerStructures() async {
+    // 🎯 Appel direct à l'API plutôt que de passer par le TicketBloc partagé :
+    // ce Bloc peut déjà contenir un état StructuresLoaded d'un chargement
+    // précédent (ex: visite de l'onglet Tickets), auquel cas redéclencher
+    // LoadStructures() ne réémet PAS d'état "nouveau" (Equatable considère
+    // la même liste comme un état égal) — le BlocListener ne se redéclenche
+    // alors jamais, et ce formulaire reste bloqué avec une liste vide.
     try {
-      // On déclenche le chargement via le BLoC ou directement via le service
-      // Pour rester simple, on utilise un appel direct à l'ApiService
-      final bloc = context.read<TicketBloc>();
-      bloc.add(LoadStructures());
-    } catch (_) {}
+      final structures = await sl<TicketService>().getStructures();
+      if (!mounted) return;
+      setState(() { _structures = structures; _loadingStructures = false; });
+      _tenterPreremplissageStructure();
+    } catch (_) {
+      if (mounted) setState(() => _loadingStructures = false);
+    }
   }
 
   Future<void> _chargerServices(int structureId) async {
     setState(() { _loadingServices = true; _services = []; _serviceSelectionne = null; });
     try {
-      context.read<TicketBloc>().add(LoadServices(structureId));
+      final services = await sl<TicketService>().getServices(structureId: structureId);
+      if (!mounted) return;
+      setState(() { _services = services; _loadingServices = false; });
+      _tenterPreremplissageService();
     } catch (_) {
-      setState(() => _loadingServices = false);
+      if (mounted) setState(() => _loadingServices = false);
     }
   }
 
@@ -1129,6 +1247,148 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
 
   void _removeFile(int index) => setState(() => _selectedFiles.removeAt(index));
 
+  // ── Champ "Structure" avec recherche par saisie ──────────────────
+  //
+  // 🎯 La `key` inclut l'id de la structure sélectionnée : quand elle
+  // change (sélection manuelle OU préremplissage automatique depuis le
+  // profil utilisateur), Flutter recrée le widget Autocomplete avec le
+  // bon `initialValue` au lieu de garder l'ancien texte affiché.
+  Widget _buildStructureAutocomplete() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Autocomplete<Structure>(
+          key: ValueKey('structure-${_structureSelectionnee?.id}'),
+          initialValue: TextEditingValue(text: _structureSelectionnee?.nom ?? ''),
+          displayStringForOption: (s) => s.nom,
+          optionsBuilder: (TextEditingValue value) {
+            final query = value.text.trim().toLowerCase();
+            if (query.isEmpty) return _structures;
+            return _structures.where((s) => s.nom.toLowerCase().contains(query));
+          },
+          onSelected: (s) {
+            setState(() => _structureSelectionnee = s);
+            if (s.id != null) _chargerServices(s.id!);
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              decoration: const InputDecoration(
+                labelText: 'Structure',
+                hintText: 'Tapez pour rechercher...',
+                prefixIcon: Icon(Icons.business_outlined, size: 18),
+              ),
+              validator: (_) => _structureSelectionnee == null ? 'Sélectionnez une structure' : null,
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: Colors.white,
+                elevation: 4,
+                borderRadius: BorderRadius.circular(8),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: 220, maxWidth: constraints.maxWidth),
+                  child: options.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text('Aucune structure trouvée', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final s = options.elementAt(index);
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                s.nom,
+                                style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
+                              ),
+                              onTap: () => onSelected(s),
+                            );
+                          },
+                        ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ── Champ "Service" avec recherche par saisie ────────────────────
+  //
+  // Filtré par _services (déjà limité à la structure choisie via
+  // _chargerServices). La key inclut structure + service pour forcer
+  // la recréation du champ quand la structure change (reset du texte).
+  Widget _buildServiceAutocomplete() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Autocomplete<Service>(
+          key: ValueKey('service-${_structureSelectionnee?.id}-${_serviceSelectionne?.id}'),
+          initialValue: TextEditingValue(text: _serviceSelectionne?.nom ?? ''),
+          displayStringForOption: (s) => s.nom,
+          optionsBuilder: (TextEditingValue value) {
+            final query = value.text.trim().toLowerCase();
+            if (query.isEmpty) return _services;
+            return _services.where((s) => s.nom.toLowerCase().contains(query));
+          },
+          onSelected: (s) => setState(() => _serviceSelectionne = s),
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              decoration: const InputDecoration(
+                labelText: 'Service concerné',
+                hintText: 'Tapez pour rechercher...',
+                prefixIcon: Icon(Icons.layers_outlined, size: 18),
+              ),
+              validator: (_) => _serviceSelectionne == null ? 'Sélectionnez un service' : null,
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: Colors.white,
+                elevation: 4,
+                borderRadius: BorderRadius.circular(8),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: 220, maxWidth: constraints.maxWidth),
+                  child: options.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text('Aucun service trouvé', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final s = options.elementAt(index);
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                s.nom,
+                                style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500),
+                              ),
+                              onTap: () => onSelected(s),
+                            );
+                          },
+                        ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _submit() {
     if (_formKey.currentState!.validate()) {
       context.read<TicketBloc>().add(
@@ -1150,9 +1410,11 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
       listener: (ctx, state) {
         if (state is StructuresLoaded) {
           setState(() { _structures = state.structures; _loadingStructures = false; });
+          _tenterPreremplissageStructure();
         }
         if (state is ServicesLoaded) {
           setState(() { _services = state.services; _loadingServices = false; });
+          _tenterPreremplissageService();
         }
       },
       child: Padding(
@@ -1187,64 +1449,28 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
                 ),
                 const SizedBox(height: 12),
 
-                // ── Structure (dropdown depuis BDD) ────────────────────
+                // ── Structure (recherche par saisie) ───────────────────
                 _loadingStructures
                     ? const Center(child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 8),
                         child: CircularProgressIndicator(strokeWidth: 2)))
-                    : DropdownButtonFormField<Structure>(
-                        value: _structureSelectionnee,
-                        isExpanded: true,
-                        menuMaxHeight: 200,
-                        decoration: const InputDecoration(
-                          labelText: 'Structure',
-                          prefixIcon: Icon(Icons.business_outlined, size: 18),
-                        ),
-                        items: _structures.map((s) => DropdownMenuItem<Structure>(
-                            value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis))).toList(),
-                        onChanged: (val) {
-                          setState(() => _structureSelectionnee = val);
-                          if (val?.id != null) _chargerServices(val!.id!);
-                        },
-                        validator: (v) => v == null ? 'Sélectionnez une structure' : null,
-                      ),
+                    : _buildStructureAutocomplete(),
                 const SizedBox(height: 12),
 
-                // ── Service (dropdown selon structure) ─────────────────
+                // ── Service (recherche par saisie, filtré par structure) ─
                 if (_structureSelectionnee != null)
                   _loadingServices
                       ? const Center(child: Padding(
                           padding: EdgeInsets.symmetric(vertical: 8),
                           child: CircularProgressIndicator(strokeWidth: 2)))
-                      : DropdownButtonFormField<Service>(
-                          value: _serviceSelectionne,
-                          isExpanded: true,
-                          menuMaxHeight: 200,
-                          decoration: const InputDecoration(
-                            labelText: 'Service concerné',
-                            prefixIcon: Icon(Icons.layers_outlined, size: 18),
-                          ),
-                          items: _services.map((s) => DropdownMenuItem<Service>(
-                              value: s, child: Text(s.nom, overflow: TextOverflow.ellipsis))).toList(),
-                          onChanged: (val) => setState(() => _serviceSelectionne = val),
-                          validator: (v) => v == null ? 'Sélectionnez un service' : null,
-                        ),
+                      : _buildServiceAutocomplete(),
                 if (_structureSelectionnee != null) const SizedBox(height: 12),
 
-                // ── Priorité ───────────────────────────────────────────
-                DropdownButtonFormField<TicketPriority>(
-                  value: _priority,
-                  isExpanded: true,
-                  menuMaxHeight: 200,
-                  decoration: const InputDecoration(
-                    labelText: 'Priorité',
-                    prefixIcon: Icon(Icons.flag_outlined, size: 18),
-                  ),
-                  items: TicketPriority.values.map((p) =>
-                      DropdownMenuItem(value: p, child: Text(p.name.toUpperCase()))).toList(),
-                  onChanged: (val) => setState(() => _priority = val!),
-                ),
-                const SizedBox(height: 12),
+                // 🎯 La priorité n'est plus fixée à la création par l'usager :
+                // elle est désormais précisée par le secrétaire ou l'admin
+                // au moment de l'affectation d'un agent (voir
+                // _ouvrirDialogueAffectation ci-dessous). Le ticket est créé
+                // avec la priorité par défaut (_priority = normale).
 
                 // ── Contact WhatsApp ───────────────────────────────────
                 TextFormField(

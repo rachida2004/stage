@@ -19,6 +19,8 @@ public class AdminController {
     private final RoleRepository roleRepo;
     private final PasswordEncoder encoder;
     private final AppSettingRepository settingRepo;
+    private final StructureRepository structureRepo;
+    private final ServiceRepository serviceRepo;
 
     // ════════════════════════════════════════════════════════════════════
     // GESTION DES UTILISATEURS
@@ -51,6 +53,19 @@ public class AdminController {
             .roles(new HashSet<>(Set.of(role)))
             .build();
 
+        // 🎯 CORRECTIF : la structure et le service saisis à la création
+        // n'étaient jamais affectés à l'utilisateur (contrairement à
+        // updateUser, qui le fait déjà correctement plus bas). Résultat :
+        // tous les utilisateurs créés via ce endpoint avaient
+        // structure_id/service_id NULL en base, même quand une structure
+        // et un service étaient bien sélectionnés dans le formulaire Flutter.
+        if (req.getStructure() != null) {
+            structureRepo.findByNom(req.getStructure()).ifPresent(u::setStructure);
+        }
+        if (req.getService() != null) {
+            serviceRepo.findByNom(req.getService()).ifPresent(u::setService);
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(utilisateurRepo.save(u)));
     }
 
@@ -61,7 +76,30 @@ public class AdminController {
             if (body.containsKey("nom") && body.get("nom") != null) u.setNom(body.get("nom").toString());
             if (body.containsKey("prenom") && body.get("prenom") != null) u.setPrenom(body.get("prenom").toString());
             if (body.containsKey("telephone") && body.get("telephone") != null) u.setTelephone(body.get("telephone").toString());
-            
+
+            // 🎯 L'email doit rester unique : on vérifie qu'aucun AUTRE
+            // utilisateur ne l'utilise déjà avant de l'accepter.
+            if (body.containsKey("email") && body.get("email") != null) {
+                String nouvelEmail = body.get("email").toString().trim();
+                if (!nouvelEmail.equalsIgnoreCase(u.getEmail())) {
+                    boolean dejaPris = utilisateurRepo.findByEmail(nouvelEmail)
+                        .map(autre -> !autre.getUserId().equals(u.getUserId()))
+                        .orElse(false);
+                    if (dejaPris) {
+                        return ResponseEntity.status(HttpStatus.CONFLICT)
+                            .body(Map.of("message", "Cet email est déjà utilisé par un autre compte."));
+                    }
+                    u.setEmail(nouvelEmail);
+                }
+            }
+
+            if (body.containsKey("structure") && body.get("structure") != null) {
+                structureRepo.findByNom(body.get("structure").toString()).ifPresent(u::setStructure);
+            }
+            if (body.containsKey("service") && body.get("service") != null) {
+                serviceRepo.findByNom(body.get("service").toString()).ifPresent(u::setService);
+            }
+
             if (body.containsKey("role") && body.get("role") != null) {
                 roleRepo.findByNom(body.get("role").toString()).ifPresent(r -> {
                     u.getRoles().clear();

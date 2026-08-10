@@ -16,4 +16,11 @@ public interface StructureRepository extends JpaRepository<Structure, Long> {
      * @return Un Optional contenant la structure si elle existe
      */
     Optional<Structure> findByNom(String nom);
+
+    /**
+     * 🎯 Recherche insensible à la casse et aux espaces superflus, utilisée
+     * pour le contrôle d'unicité : "DSI", "dsi" et " DSI " doivent être
+     * considérés comme le même nom de structure.
+     */
+    Optional<Structure> findByNomIgnoreCase(String nom);
 }

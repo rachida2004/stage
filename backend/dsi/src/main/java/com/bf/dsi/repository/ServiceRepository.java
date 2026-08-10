@@ -8,4 +8,5 @@ public interface ServiceRepository extends JpaRepository<Service, Long> {
     
     // 🎯 C'est cette ligne magique qui règle tout côté Base de données !
     List<Service> findByStructureId(Long structureId);
+    java.util.Optional<Service> findByNom(String nom);
 }

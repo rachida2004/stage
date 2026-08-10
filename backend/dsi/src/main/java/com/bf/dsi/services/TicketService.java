@@ -18,6 +18,9 @@ public class TicketService {
     private final UtilisateurRepository utilisateurRepository;
 
     // AFFECTATION D'UN AGENT -> PASSE AUTOMATIQUEMENT EN "EN_COURS"
+    // 🎯 Un ticket n'a qu'UN SEUL agent affecté à la fois. Affecter un
+    // nouvel agent REMPLACE l'ancien (au lieu de s'accumuler), ce qui
+    // permet de "changer l'agent affecté" comme demandé.
     @Transactional
     public Ticket affecterAgent(Long ticketId, Long agentId) {
         Ticket ticket = ticketRepository.findById(ticketId)
@@ -26,22 +29,21 @@ public class TicketService {
         Utilisateur agent = utilisateurRepository.findById(agentId)
                 .orElseThrow(() -> new RuntimeException("Agent introuvable"));
 
-        // VÉRIFICATION D'UNICITÉ : Empêche la violation de contrainte SQL 23505
-        boolean dejaAffecte = ticket.getAffectations().stream()
+        boolean dejaAffecteAuMemeAgent = ticket.getAffectations().stream()
                 .anyMatch(a -> a.getAgent().getUserId().equals(agentId));
-
-        if (dejaAffecte) {
+        if (dejaAffecteAuMemeAgent) {
             throw new RuntimeException("Cet agent est déjà affecté à ce ticket.");
         }
 
-        // Création de l'association
+        // On retire l'ancienne affectation (orphanRemoval=true sur la
+        // collection la supprimera bien de la base à la sauvegarde).
+        ticket.getAffectations().clear();
+
         AffectationTicket affectation = AffectationTicket.builder()
                 .ticket(ticket)
                 .agent(agent)
                 .responsablePrincipal(true)
                 .build();
-
-        // Ajout dans le Set du Ticket
         ticket.getAffectations().add(affectation);
         
         // Règle métier : Si le ticket était "EN_ATTENTE", il passe "EN_COURS"
