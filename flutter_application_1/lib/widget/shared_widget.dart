@@ -198,7 +198,7 @@ class AppSearchBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? const Color.fromARGB(255, 235, 239, 236) : AppColors.surface,//reche
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color.fromARGB(255, 29, 18, 237), width: 0.5),
+        border: Border.all(color: const Color.fromARGB(255, 3, 61, 17), width: 0.5),
       ),
       child: Row(
         children: [
@@ -239,7 +239,7 @@ class BarChartRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SizedBox(width: 90, child: Text(label, style: const TextStyle(fontSize: 11, color: Color.fromARGB(255, 14, 14, 220)), textAlign: TextAlign.right)),
+          SizedBox(width: 90, child: Text(label, style: const TextStyle(fontSize: 11, color: Color.fromARGB(255, 3, 67, 3)), textAlign: TextAlign.right)),
           const SizedBox(width: 8),
           Expanded(
             child: ClipRRect(

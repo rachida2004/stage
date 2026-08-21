@@ -64,7 +64,7 @@ class _MesTicketsSolutionsScreenState extends State<MesTicketsSolutionsScreen> {
                                 children: [
                                   Row(children: [
                                     Expanded(
-                                      child: Text('#${t.id} — ${t.description}',
+                                      child: Text('N°${t.id} — ${t.description}',
                                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                                           maxLines: 2, overflow: TextOverflow.ellipsis),
                                     ),

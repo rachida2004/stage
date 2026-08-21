@@ -300,7 +300,7 @@ class _TicketListTile extends StatelessWidget {
           Container(
             width: 34, height: 34,
             decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(8)),
-            child: Center(child: Text('#${ticket.id}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.muted))),
+            child: Center(child: Text('N°${ticket.id}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.muted))),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   // Primary electric blue
-  static const primary = Color(0xFF2563EB);
+  static const primary = Color.fromARGB(255, 3, 68, 25);
   static const primaryLight = Color(0xFFE6F1FB);
-  static const primaryDark = Color(0xFF1D4ED8);
+  
+  static const primaryDark = Color.fromARGB(255, 6, 79, 22);
+
 
   // Secondary light blue
-  static const secondary = Color(0xFF60A5FA);
+  static const secondary = Color.fromARGB(255, 5, 69, 22);
   static const secondaryLight = Color(0xFFDBEAFE);
 
   // Success green
@@ -30,7 +32,7 @@ class AppColors {
   static const pageBg = Colors.white;       // ✅ now white
 
   // Dark mode
-  static const darkBg = Color.fromARGB(255, 2, 63, 154);//modifier
+  static const darkBg = Color.fromARGB(255, 4, 79, 22);//modifier
   static const darkSurface = Color(0xFF1E293B);
   static const darkCard = Color(0xFF1E293B);
   static const darkBorder = Color(0xFF334155);
@@ -154,10 +156,10 @@ class AppTheme {
 
   static ThemeData darkTheme = lightTheme.copyWith(
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color.fromARGB(255, 37, 19, 235),
+      seedColor: Color.fromARGB(214, 6, 77, 27),
       brightness: Brightness.dark,
-      primary: const Color.fromARGB(255, 63, 12, 229),
-      secondary: const Color.fromARGB(255, 41, 10, 217),
+      primary:Color.fromARGB(214, 6, 77, 27),
+      secondary:Color.fromARGB(214, 6, 77, 27),
       surface: AppColors.darkSurface,
       onSurface: AppColors.darkText,
     ),
@@ -186,7 +188,7 @@ class AppTheme {
     ),
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       backgroundColor: Color.fromARGB(255, 248, 250, 255),
-      selectedItemColor: Color.fromARGB(255, 8, 8, 255),
+      selectedItemColor: Color.fromARGB(255, 2, 62, 10),
       unselectedItemColor: Color.fromARGB(255, 236, 231, 231),
       type: BottomNavigationBarType.fixed,
       elevation: 0,

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict BaYpetEh4MJBlTqmhK8F6qS0tT63NPNUsZI59F1JSd2V7rXlf30iCwTgkXI64UI
+\restrict wuFfvnIOmzSVZVw89TeUvfwh9eRULckRGJuPeU2HMbZksePz3UDJIYFto2MJCfI
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 16.14
@@ -326,7 +326,9 @@ CREATE TABLE public.invitation (
     signataire_nom character varying(255),
     signataire_qualite character varying(255),
     ville character varying(255),
-    mode_creation character varying(255)
+    mode_creation character varying(255),
+    alerte_delai_envoyee boolean,
+    contenu_delta text
 );
 
 
@@ -502,6 +504,18 @@ ALTER SEQUENCE public.role_id_seq OWNED BY public.role.id;
 
 
 --
+-- Name: role_permissions; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.role_permissions (
+    role_id bigint NOT NULL,
+    permission character varying(255)
+);
+
+
+ALTER TABLE public.role_permissions OWNER TO postgres;
+
+--
 -- Name: service; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -625,7 +639,8 @@ CREATE TABLE public.ticket (
     structure_id bigint,
     createur_id bigint,
     description text NOT NULL,
-    whatsapp character varying(20)
+    whatsapp character varying(20),
+    alerte_delai_envoyee boolean
 );
 
 
@@ -845,14 +860,10 @@ ALTER TABLE ONLY public.utilisateur_role ALTER COLUMN id SET DEFAULT nextval('pu
 --
 
 COPY public.affectation_invitation (id, invitation_id, agent_id, responsable_principal, date_affectation) FROM stdin;
-2	1	7	f	2026-06-15 19:18:24.912564
-3	1	6	t	2026-06-15 19:18:24.920565
-4	4	6	t	2026-06-16 01:29:28.582328
-5	7	3	f	2026-06-17 07:13:17.634259
-6	5	3	f	2026-06-18 17:36:05.608605
-7	9	3	f	2026-06-19 07:59:48.744414
-9	19	3	f	2026-06-21 20:32:59.058331
-10	19	5	f	2026-06-21 20:32:59.069333
+3	18	21	t	2026-07-14 17:50:21.359945
+4	18	5	f	2026-07-14 17:50:21.371141
+5	22	21	t	2026-07-15 10:42:18.914813
+6	22	5	f	2026-07-15 10:42:18.924776
 \.
 
 
@@ -861,17 +872,12 @@ COPY public.affectation_invitation (id, invitation_id, agent_id, responsable_pri
 --
 
 COPY public.affectation_ticket (id, ticket_id, agent_id, responsable_principal, date_affectation) FROM stdin;
-1	2	8	t	2026-06-16 05:33:35.580889
-2	2	3	t	2026-06-17 01:01:11.999607
-3	3	3	t	2026-06-17 07:17:09.438908
-4	3	9	t	2026-06-17 09:32:02.508788
-5	3	5	t	2026-06-17 09:32:17.183809
-6	3	4	t	2026-06-17 09:33:04.769264
-7	5	3	t	2026-06-17 09:35:19.988088
-8	6	5	t	2026-06-17 09:42:02.64565
-9	14	3	t	2026-06-18 00:25:48.393431
-11	13	3	t	2026-06-20 07:56:57.161888
-12	17	3	t	2026-06-22 05:48:35.670751
+4	7	5	t	2026-07-14 16:38:40.208158
+5	7	6	t	2026-07-14 16:39:03.227689
+6	7	21	t	2026-07-14 16:51:25.886293
+12	15	21	t	2026-07-15 10:49:27.33212
+19	8	5	t	2026-07-24 09:33:30.306113
+21	21	5	t	2026-07-31 09:51:47.900104
 \.
 
 
@@ -880,10 +886,10 @@ COPY public.affectation_ticket (id, ticket_id, agent_id, responsable_principal, 
 --
 
 COPY public.app_settings (cle, valeur) FROM stdin;
-notificationsEmail	false
-notificationsInternes	false
-langue	Français
 delaiMaxSansAffectation	48h
+notificationsInternes	true
+notificationsEmail	true
+langue	Français
 \.
 
 
@@ -915,25 +921,17 @@ COPY public.communication (id, message, date, auteur_id, ticket_id) FROM stdin;
 -- Data for Name: invitation; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.invitation (id, objet, date_debut, date_fin, nombre_participant, statut, visibilite, date_creation, structure_emettrice, lieu, ampliation, contenu, numero_reference, signataire_nom, signataire_qualite, ville, mode_creation) FROM stdin;
-1	boton	2026-06-15	2026-06-18	2	EN_COURS	PUBLIC	2026-06-15 06:54:30.07283	\N	ouaga	\N	\N	\N	\N	\N	\N	\N
-4	rencontre	2026-06-16	2026-06-18	2	EN_COURS	PUBLIC	2026-06-16 01:28:28.482157	\N	ouaga	\N	\N	\N	\N	\N	\N	\N
-7	conte	2026-06-18	2026-06-20	3	PLANIFIEE	PUBLIC	2026-06-16 05:00:45.237147	\N	kaya	\N	\N	\N	\N	\N	\N	\N
-5	pancarte	2026-06-16	2026-06-19	3	EN_COURS	PUBLIC	2026-06-16 03:18:23.572308	\N	ddd	\N	\N	\N	\N	\N	\N	\N
-8	ertyuio	2026-06-19	2026-06-20	2	EN_ATTENTE	PUBLIC	2026-06-19 06:54:46.228699	20	ouaga	geljd	k,edrtiyxuonp,kednbctviydhjlkb cjkbihety fogeydhjl  e		jusdjne	Le Secrétaire général	Ouagadougou	\N
-9	kjlhgfhjk	2026-06-19	2026-06-20	0	EN_COURS	PUBLIC	2026-06-19 07:19:23.062371	\N						Le Secrétaire général	Ouagadougou	\N
-10	jhgfdcghjkl	2026-06-21	2026-06-23	0	EN_ATTENTE	PUBLIC	2026-06-21 02:57:36.58626	\N	ljkhgj					Le Secrétaire général	Ouagadougou	ENREGISTRER
-11	cgvhbsssss	2026-06-23	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 03:13:55.09272	20						Le Secrétaire général	Ouagadougou	ENREGISTRER
-12	nbvcvbn	2026-06-15	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-21 03:24:42.897752	20						Le Secrétaire général	Ouagadougou	ENREGISTRER
-13	lkjbh	2026-06-23	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 03:45:36.153365	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
-14	mlkjhgfxcghj	2026-06-15	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 03:46:06.792016	21		\N	\N	\N	\N	\N	Ouagadougou	ENREGISTRER
-15	nn,;	2026-06-20	2026-06-23	0	EN_ATTENTE	PUBLIC	2026-06-21 16:59:24.672013	\N	fcghjg					Le Secrétaire général	Ouagadougou	ENREGISTRER
-16	kjhgvcxcv	2026-06-20	2026-06-27	0	EN_ATTENTE	PUBLIC	2026-06-21 17:09:29.578645	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
-17	kljh	2026-06-22	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-21 17:51:43.119087	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
-18	kjhgcfhjk	2026-06-23	2026-06-24	0	EN_ATTENTE	PUBLIC	2026-06-21 17:58:01.281955	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
-19	mlkjbhv	2026-06-23	2026-06-26	0	PLANIFIEE	PUBLIC	2026-06-21 17:58:50.425402	\N						Le Secrétaire général	Ouagadougou	ENREGISTRER
-20	dfkljkhj	2026-06-15	2026-06-24	0	EN_ATTENTE	PUBLIC	2026-06-21 23:30:11.609315	\N	kljhgjk					Le Secrétaire général	Ouagadougou	CREER
-21	gfdrtfyui	2026-06-22	2026-06-26	0	EN_ATTENTE	PUBLIC	2026-06-22 05:03:28.502358	\N		klmj_ynèèp	hgjkjnlbvfdxcgvhjkl\nùokmijluyhtrcdsxqzer-tèy_uçàii_ouyhtghfdghjklm		ghzertyuio	Le Secrétaire général	Ouagadougou	CREER
+COPY public.invitation (id, objet, date_debut, date_fin, nombre_participant, statut, visibilite, date_creation, structure_emettrice, lieu, ampliation, contenu, numero_reference, signataire_nom, signataire_qualite, ville, mode_creation, alerte_delai_envoyee, contenu_delta) FROM stdin;
+17	lkl	2026-07-14	2026-07-17	0	EN_ATTENTE	PUBLIC	2026-07-14 17:44:50.671509	32	haya	hjfcv; ghjh; tgjh;	Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.		kone gare	Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim ve"},{"insert":"niam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.","attributes":{"bold":true}},{"insert":"\\n\\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim"},{"insert":" veniam, quis nostrud exercitation ullamco laboris nisi ","attributes":{"bold":true}},{"insert":"ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\\n\\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\\n"}]
+19	;jv	2026-07-15	2026-07-17	0	EN_ATTENTE	PUBLIC	2026-07-15 06:45:13.290823	32		ncvb;vbb;jkkk	Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris\nnisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate\nvelit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non\nproident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris\nnisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit\nesse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in\nculpa qui officia deserunt mollit anim id est laborum.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut\naliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse\ncillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa\nqui officia deserunt mollit anim id est laborum.		rachid barro	Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris\\nnisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate\\nvelit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non\\n"},{"insert":"proident, sunt in culpa qui officia deserunt mollit anim id est laborum.","attributes":{"bold":true}},{"insert":"\\n\\nLorem ipsum dol"},{"insert":"or sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"culpa qui officia deserunt mollit anim id est laborum.","attributes":{"bold":true}},{"insert":"\\n\\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut\\naliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse\\ncillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa\\nqui officia deserunt mollit anim id est laborum.\\n\\n"}]
+20	kjb	2026-07-15	2026-07-17	0	EN_ATTENTE	PUBLIC	2026-07-15 06:59:32.121354	32			Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris\nnisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate\nvelit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non\nproident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris\nnisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit\nesse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in\nculpa qui officia deserunt mollit anim id est laborum.\njh\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut\naliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse\ncillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa\nqui officia deserunt mollit anim id est laborum.			Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris\\nnisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate\\nvelit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non\\nproident, sunt in culpa qui officia deserunt mollit anim id est laborum.\\n\\nLorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore\\net dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris\\nnisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit\\nesse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in\\nculpa qui officia deserunt mollit anim id est laborum.\\njh\\n\\n"},{"insert":"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa","attributes":{"bold":true}},{"insert":"\\n"},{"insert":"qui officia deserunt mollit anim id est laborum.","attributes":{"bold":true}},{"insert":"\\n\\n"}]
+15	lkjbh	2026-07-10	2026-07-12	0	EN_ATTENTE	PUBLIC	2026-07-10 09:14:58.742371	32			Une branche technique : cette branche est consacrée à l’identification des besoins non fonctionnels. Elle prend en compte les différentes contraintes auxquelles l’application doit se conformer, notamment celles liées à l’intégration, au développement, à la sécurité, aux performances et à l’exploitation.\n\n\n  La phase de réalisation : cette phase s’appuie sur les résultats des deux branches précédentes pour concevoir et développer la solution. Elle englobe la conception préliminaire, la conception détaillée, le développement, les tests, ainsi que la recette finale, afin de garantir que la solution répondre aux besoins exprimés par les utilisateurs.\n\n\n\n\n\nDans cette partie, après avoir présenté le thème de notre étude, nous avons abordé la gestion de projet ainsi que la méthodologie retenue. Ces éléments nous permettant désormais de mieux cerner les exigences du travail à réaliser et les exigences du travail à réaliser et la démarche méthodologique à adopter pour sa mise en œuvre.\n\nhjhjj			Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":" Une branche technique : cette branche est consacrée à l’identification des besoins non fonctionnels. Elle prend en compte les différentes contraintes auxquelles l’application doit se conformer, notamment celles liées à l’intégration, au développement, à la sécurité, aux performances et à l’exploitation.\\n\\n\\n  La phase de réalisation : cette phase s’appuie sur les résultats des deux branches précédentes pour concevoir et développer la solution. Elle englobe la conception préliminaire, la conception détaillée, le développement, les tests, ainsi que la recette finale, afin de garantir que la solution répondre aux besoins exprimés par les utilisateurs.\\n\\n\\n\\n\\n\\n"},{"insert":"Dans cette partie, après avoir présenté","attributes":{"bold":true}},{"insert":" le thème de notre étude, nous avons abordé la gestion de projet ainsi que la méthodologie retenue. Ces éléments nous permettant désormais de mieux cerner les exigences du travail à réaliser et les exigences du travail à réaliser et la démarche méthodologique à adopter pour sa mise en œuvre.\\n\\nhjhjj"},{"insert":"\\n","attributes":{"align":"center"}},{"insert":"\\n\\n"}]
+18	rencontre	2026-07-14	2026-07-16	2	EN_COURS	PUBLIC	2026-07-14 17:49:05.127945	22	kaya	\N	\N	\N	\N	\N	Ouagadougou	ENREGISTRER	f	\N
+16	knk,nhb	2026-07-14	2026-07-17	3	EN_ATTENTE	PUBLIC	2026-07-14 17:41:07.927691	32	kaya	BJJH; hjbhh;iojn	obnkpurtr l,md,i\n,ccnnjd\n,cnsd		rachid barro	Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":"obnkpurtr l,md,i","attributes":{"bold":true}},{"insert":"\\n","attributes":{"align":"center"}},{"insert":",ccnnjd\\n,cnsd\\n"}]
+22	reunion	2026-07-15	2026-07-17	2	EN_COURS	PUBLIC	2026-07-15 10:41:25.599147	22	kay	\N	\N	\N	\N	\N	Ouagadougou	ENREGISTRER	f	\N
+21	sgvjh	2026-07-15	2026-07-17	0	EN_ATTENTE	PUBLIC	2026-07-15 08:28:42.922152	32			« Pour vous faire mieux connaître d’où vient l’erreur de ceux qui blâment la volupté, et qui louent en quelque sorte la douleur, je vais entrer dans une explication plus étendue, et vous faire voir tout ce qui a été dit là-dessus par l’inventeur de la vérité, et, pour ainsi dire, par l’architecte de la vie heureuse.\n\n\n\nPersonne [dit Épicure] ne craint ni ne fuit la volupté en tant que volupté, mais en tant qu’elle attire de grandes douleurs à ceux qui ne savent pas en faire un usage modéré et raisonnable ; et personne n’aime ni ne recherche la douleur comme douleur, mais parce qu’il arrive quelquefois que, par le travail et par la peine, on parvienne à jouir d’une grande volupté. En effet, pour descendre jusqu’aux petites choses, qui de vous ne fait point quelque exercice pénible pour en retirer quelque sorte d’utilité ? Et qui pourrait justement blâmer, ou celui qui rechercherait une volupté qui ne pourrait être suivie de rien de fâcheux, ou celui qui éviterait une douleur dont il ne pourrait espérer aucun plaisir.\n\nAu contraire, nous blâmons avec raison et nous croyons dignes de mépris et de haine ceux qui, se laissant corrompre par les attraits d’une volupté présente, ne prévoient pas à combien de maux et de chagrins une passion aveugle les peut exposer.\n\nJ’en dis autant de ceux qui, par mollesse d’esprit, c’est-à-dire par la crainte de la peine et de la douleur, manquent aux devoirs de la vie. Et il est très facile de rendre raison de ce que j’avance. Car, lorsque nous sommes tout à fait libres, et que rien ne nous empêche de faire ce qui peut nous donner le plus de plaisir, nous pouvons nous livrer entièrement à la volupté et chasser toute sorte de douleur ; mais, dans les temps destinés aux devoirs de la société ou à la nécessité des affaires, souvent il faut faire divorce avec la volupté, et ne se point refuser à la peine.\n\nLa règle que suit en cela un homme sage, c’est de renoncer à de légères voluptés pour en avoir de plus grandes, et de savoir supporter des douleurs légères pour en éviter de plus fâcheuses. »			Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":"« Pour vous faire mieux connaître d’où vient l’erreur de ceux qui blâment la volupté, et qui louent en quelque sorte la douleur, je vais entrer dans une explication plus étendue, et vous faire voir tout ce qui a été dit là-dessus par l’inventeur de la vérité, et, pour ainsi dire, par l’architecte de la vie heureuse.","attributes":{"bold":true}},{"insert":"\\n\\n\\n\\nPersonne [dit Épicure] ne craint ni ne fuit la volupté en tant que volupté, mais en tant qu’elle attire de grandes douleurs à ceux qui ne savent pas en faire un usage modéré et raisonnable ; et personne n’aime ni ne recherche la douleur comme douleur, mais parce qu’il arrive quelquefois que, par le travail et par la peine, on parvienne à jouir d’une grande volupté. En effet, pour descendre jusqu’aux petites choses, qui de vous ne fait point quelque exercice pénible pour en retirer quelque sorte d’utilité ? Et qui pourrait justement blâmer, ou celui qui rechercherait une volupté qui ne pourrait être suivie de rien de fâcheux, ou celui qui éviterait une douleur dont il ne pourrait espérer aucun plaisir.\\n\\nAu contraire, nous blâmons avec raison et nous croyons dignes de mépris et de haine ceux qui, se laissant corrompre par les attraits d’une volupté présente, ne prévoient pas à combien de maux et de chagrins une passion aveugle les peut exposer.\\n\\n"},{"insert":"J’en dis autant de ceux qui, par mollesse d’esprit, c’est-à-dire par la crainte de la peine et de la douleur, manquent aux devoirs de la vie. Et il est très facile de rendre raison de ce que j’avance. Car, lorsque nous sommes tout à fait libres, et que rien ne nous empêche de faire ce qui peut nous donner le plus de plaisir, nous pouvons nous livrer entièrement à la volupté et chasser toute sorte de douleur ; mais, dans les temps destinés aux devoirs de la société ou à la nécessité des affaires, souvent il faut faire divorce avec la volupté, et ne se point refuser à la peine.","attributes":{"italic":true}},{"insert":"\\n"},{"insert":"\\n","attributes":{"align":"center"}},{"insert":"La règle que suit en cela un homme sage, c’est de renoncer à de légères voluptés pour en avoir de plus grandes, et de savoir supporter des douleurs légères pour en éviter de plus fâcheuses. »"},{"insert":"\\n","attributes":{"align":"center"}}]
+23	rencontre	2026-07-16	2026-07-18	4	EN_ATTENTE	PUBLIC	2026-07-15 10:47:19.170391	32	bobo	bdmp; bcmp	« Pour vous faire mieux connaître d’où vient l’erreur de ceux qui blâment la volupté, et qui louent en quelque sorte la douleur, je vais entrer dans une explication plus étendue, et vous faire voir tout ce qui a été dit là-dessus par l’inventeur de la vérité, et, pour ainsi dire, par l’architecte de la vie heureuse.\n\n\nPersonne [dit Épicure] ne craint ni ne fuit la volupté en tant que volupté, mais en tant qu’elle attire de grandes douleurs à ceux qui ne savent pas en faire un usage modéré et raisonnable ; et personne n’aime ni ne recherche la douleur comme douleur, mais parce qu’il arrive quelquefois que, par le travail et par la peine, on parvienne à jouir d’une grande volupté. En effet, pour descendre jusqu’aux petites choses, qui de vous ne fait point quelque exercice pénible pour en retirer quelque sorte d’utilité ? Et qui pourrait justement blâmer, ou celui qui rechercherait une volupté qui ne pourrait être suivie de rien de fâcheux, ou celui qui éviterait une douleur dont il ne pourrait espérer aucun plaisir.\n\nAu contraire, nous blâmons avec raison et nous croyons dignes de mépris et de haine ceux qui, se laissant corrompre par les attraits d’une volupté présente, ne prévoient pas à combien de maux et de chagrins une passion aveugle les peut exposer.	2026/0776	rachid barro	Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":"« Pour vous faire mieux connaître d’où vient l’erreur de ceux qui blâment la volupté, et qui louent en quelque sorte la douleur, je vais entrer dans une explication plus étendue, et vous faire voir tout ce qui a été dit là-dessus par l’inventeur de la vérité, et, pour ainsi dire, par l’architecte de la vie heureuse.","attributes":{"bold":true}},{"insert":"\\n\\n\\nPersonne [dit Épicure] ne craint ni "},{"insert":"ne fuit la volupté","attributes":{"italic":true}},{"insert":" en tant que volupté, mais en tant qu’elle attire de grandes douleurs à ceux qui ne savent pas en faire un usage modéré et raisonnable ; et personne n’aime ni ne recherche la douleur comme douleur, mais parce qu’il arrive quelquefois que, par le travail et par la peine, on parvienne à jouir d’une grande volupté. En effet, pour descendre jusqu’aux petites choses, qui de vous ne fait point quelque exercice pénible pour en retirer quelque sorte d’utilité ? Et qui pourrait justement blâmer, ou celui qui rechercherait une volupté qui ne pourrait être suivie de rien de fâcheux, ou celui qui éviterait une douleur dont il ne pourrait espérer aucun plaisir.\\n\\nAu contraire, nous blâmons avec raison et nous croyons dignes de mépris et de haine ceux qui, se laissant corrompre par les attraits d’une volupté présente, ne prévoient pas à combien de maux et de chagrins une passion aveugle les peut exposer."},{"insert":"\\n","attributes":{"align":"center"}}]
+24	,nb	2026-07-24	2026-07-25	0	EN_ATTENTE	PUBLIC	2026-07-24 11:22:52.059	32			bvcxhj,n;j,yèiukj			Le Secrétaire général	Ouagadougou	CREER	t	[{"insert":"bvcxhj,n;j,yèiukj\\n"}]
 \.
 
 
@@ -942,84 +940,33 @@ COPY public.invitation (id, objet, date_debut, date_fin, nombre_participant, sta
 --
 
 COPY public.notification (id, message, date_envoi, canal, statut, categorie, resource_id, action_label, utilisateur_id) FROM stdin;
-2	Vous avez été affecté au ticket #5	2026-06-08 18:25:19.213392	INTERNE	f	TICKET	5	Voir	4
-3	Vous avez été affecté au ticket #6	2026-06-08 18:28:23.769415	INTERNE	f	TICKET	6	Voir	5
-4	Vous avez été affecté au ticket #7	2026-06-09 19:38:05.039272	INTERNE	f	TICKET	7	Voir	1
-1	Vous avez été affecté au ticket #5	2026-06-07 03:10:21.304356	INTERNE	t	TICKET	5	Voir	3
-5	Vous avez été affecté au ticket #8	2026-06-09 20:09:38.32325	INTERNE	f	TICKET	8	Voir	8
-6	Vous avez été affecté au ticket #9	2026-06-09 21:25:19.375608	INTERNE	f	TICKET	9	Voir	5
-7	Vous avez été affecté au ticket #10	2026-06-09 21:33:38.984882	INTERNE	f	TICKET	10	Voir	5
-8	Vous avez été affecté au ticket #11	2026-06-09 22:49:45.064889	INTERNE	f	TICKET	11	Voir	8
-9	Vous avez été affecté au ticket #12	2026-06-09 23:18:20.54557	INTERNE	f	TICKET	12	Voir	4
-10	Vous avez été affecté au ticket #13	2026-06-10 05:49:25.986835	INTERNE	t	TICKET	13	Voir	3
-11	Vous avez été affecté au ticket #14	2026-06-10 09:47:41.627917	INTERNE	f	TICKET	14	Voir	5
-12	Vous avez été affecté au ticket #15	2026-06-10 20:15:24.907714	INTERNE	f	TICKET	15	Voir	7
-19	Vous avez été affecté à l'invitation : cvbnk	2026-06-11 00:41:21.086004	INTERNE	f	INVITATION	14	Voir	5
-20	Vous avez été affecté à l'invitation : cvbnk	2026-06-11 00:41:21.089998	INTERNE	f	INVITATION	14	Voir	6
-25	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : dfghj	2026-06-11 00:44:45.573227	INTERNE	f	INVITATION	16	Voir	4
-29	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : ghjk	2026-06-11 18:10:03.197979	INTERNE	f	INVITATION	7	Voir	4
-31	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : LKJHGCFHJ	2026-06-11 18:11:37.601446	INTERNE	f	INVITATION	8	Voir	4
-32	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : xghjklw	2026-06-11 18:12:15.453061	INTERNE	f	INVITATION	9	Voir	4
-33	Vous avez été affecté à l'invitation : dfghj	2026-06-11 18:35:13.567461	INTERNE	f	INVITATION	16	Voir	4
-34	Vous avez été affecté à l'invitation : dfghj	2026-06-11 18:35:13.578575	INTERNE	f	INVITATION	16	Voir	6
-35	Vous avez été affecté à l'invitation : dfghj	2026-06-11 19:33:56.946118	INTERNE	f	INVITATION	16	Voir	4
-36	Vous avez été affecté à l'invitation : dfghj	2026-06-11 19:33:56.953355	INTERNE	f	INVITATION	16	Voir	6
-37	Vous avez été affecté à l'invitation : dfghj	2026-06-11 19:33:56.961337	INTERNE	f	INVITATION	16	Voir	5
-38	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : x,	2026-06-11 19:46:18.708954	INTERNE	f	INVITATION	12	Voir	5
-39	Vous avez été affecté à l'invitation : g fjkl	2026-06-11 19:49:46.878167	INTERNE	f	INVITATION	17	Voir	6
-40	Vous avez été affecté au ticket #15	2026-06-11 19:50:44.441287	INTERNE	f	TICKET	15	Voir	5
-41	Vous avez été affecté au ticket #15	2026-06-11 19:51:01.878016	INTERNE	f	TICKET	15	Voir	1
-42	Vous avez été affecté à l'invitation : g fjkl	2026-06-11 20:22:46.706012	INTERNE	f	INVITATION	17	Voir	6
-43	Vous avez été affecté à l'invitation : g fjkl	2026-06-11 20:22:46.711012	INTERNE	f	INVITATION	17	Voir	4
-44	Vous avez été affecté au ticket #14	2026-06-11 23:18:58.431792	INTERNE	f	TICKET	14	Voir	7
-45	Vous avez été affecté à l'invitation : LKJHGCFHJ	2026-06-11 23:19:32.592973	INTERNE	f	INVITATION	8	Voir	4
-46	Vous avez été affecté à l'invitation : LKJHGCFHJ	2026-06-11 23:19:32.599986	INTERNE	f	INVITATION	8	Voir	7
-47	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	4
-48	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	6
-49	Vous avez été affecté à l'invitation : g fjkl	2026-06-12 00:19:50.340914	INTERNE	f	INVITATION	17	Voir	7
-51	Vous avez été affecté à l'invitation : g fjkl	2026-06-14 05:59:50.74522	INTERNE	f	INVITATION	17	Voir	6
-52	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : xdfcvbn	2026-06-14 06:21:30.629978	INTERNE	f	INVITATION	18	Voir	5
-53	Vous avez été affecté à l'invitation : kjhgj	2026-06-14 08:21:01.115736	INTERNE	f	INVITATION	25	Voir	5
-54	Vous avez été affecté à l'invitation : aertyu	2026-06-14 08:35:25.236623	INTERNE	f	INVITATION	26	Voir	2
-55	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : aertyu	2026-06-14 08:36:41.090501	INTERNE	f	INVITATION	26	Voir	2
-56	Vous avez été affecté à l'invitation : fghj	2026-06-14 20:11:43.148379	INTERNE	f	INVITATION	27	Voir	10
-58	Vous avez été affecté au ticket #16	2026-06-14 21:52:43.872952	INTERNE	f	TICKET	16	Voir	4
-59	Vous avez été affecté à l'invitation : vhbjn	2026-06-14 21:58:21.059653	INTERNE	f	INVITATION	28	Voir	5
-60	Vous avez été affecté à l'invitation : fxdcgvhbn,	2026-06-14 22:00:35.752696	INTERNE	f	INVITATION	23	Voir	6
-57	Vous avez été affecté au ticket #16	2026-06-14 20:13:16.936463	INTERNE	t	TICKET	16	Voir	7
-50	Vous avez été affecté à l'invitation : g fjkl	2026-06-14 05:59:50.73535	INTERNE	t	INVITATION	17	Voir	7
-21	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : cvbnk	2026-06-11 00:41:21.093018	INTERNE	t	INVITATION	14	Voir	9
-13	Vous avez été affecté à l'invitation : xcgvhbn	2026-06-11 00:20:55.45176	INTERNE	t	INVITATION	15	Voir	9
-62	Vous avez été affecté au ticket #17	2026-06-15 03:59:23.19447	INTERNE	f	TICKET	17	Voir	7
-64	Vous avez été affecté à l'invitation : conference	2026-06-15 03:59:56.574112	INTERNE	f	INVITATION	29	Voir	7
-65	Vous avez été affecté à l'invitation : vhbjn	2026-06-15 04:01:05.137513	INTERNE	f	INVITATION	28	Voir	5
-66	Vous avez été affecté à l'invitation : vhbjn	2026-06-15 04:01:05.16093	INTERNE	f	INVITATION	28	Voir	7
-63	Vous avez été affecté à l'invitation : conference	2026-06-15 03:59:56.557217	INTERNE	t	INVITATION	29	Voir	9
-61	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : conference	2026-06-15 03:50:25.729295	INTERNE	t	INVITATION	29	Voir	9
-67	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : conference1	2026-06-15 05:07:59.212426	INTERNE	f	INVITATION	30	Voir	5
-68	Vous avez été affecté à l'invitation : conference1	2026-06-15 05:07:59.224398	INTERNE	f	INVITATION	30	Voir	6
-69	Vous avez été affecté à l'invitation : boton	2026-06-15 19:16:58.21019	INTERNE	f	INVITATION	1	Voir	7
-70	Vous avez été affecté à l'invitation : boton	2026-06-15 19:18:24.916672	INTERNE	f	INVITATION	1	Voir	7
-71	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : boton	2026-06-15 19:18:24.923566	INTERNE	f	INVITATION	1	Voir	6
-72	⚠️ Vous êtes RESPONSABLE PRINCIPAL pour l'invitation : rencontre	2026-06-16 01:29:28.59032	INTERNE	f	INVITATION	4	Voir	6
-73	Vous avez été affecté au ticket #2	2026-06-16 05:33:35.606685	INTERNE	f	TICKET	2	Voir	8
-74	Vous avez été affecté au ticket #2	2026-06-17 01:01:12.086207	INTERNE	t	TICKET	2	Voir	3
-75	Vous avez été affecté à l'invitation : conte	2026-06-17 07:13:17.670862	INTERNE	t	INVITATION	7	Voir	3
-76	Vous avez été affecté au ticket #3	2026-06-17 07:17:09.454391	INTERNE	t	TICKET	3	Voir	3
-77	Vous avez été affecté au ticket #3	2026-06-17 09:32:02.523789	INTERNE	f	TICKET	3	Voir	9
-78	Vous avez été affecté au ticket #3	2026-06-17 09:32:17.196782	INTERNE	f	TICKET	3	Voir	5
-79	Vous avez été affecté au ticket #3	2026-06-17 09:33:04.774732	INTERNE	f	TICKET	3	Voir	4
-81	Vous avez été affecté au ticket #6	2026-06-17 09:42:02.650665	INTERNE	f	TICKET	6	Voir	5
-80	Vous avez été affecté au ticket #5	2026-06-17 09:35:19.999641	INTERNE	t	TICKET	5	Voir	3
-82	Vous avez été affecté au ticket #14	2026-06-18 00:25:48.410548	INTERNE	t	TICKET	14	Voir	3
-84	Vous avez été affecté à l'invitation : pancarte	2026-06-18 17:36:05.614516	INTERNE	t	INVITATION	5	Voir	3
-83	Vous avez été affecté au ticket #16	2026-06-18 17:35:07.831358	INTERNE	t	TICKET	16	Voir	3
-85	Vous avez été affecté à l'invitation : kjlhgfhjk	2026-06-19 07:59:48.784419	INTERNE	t	INVITATION	9	Voir	3
-86	Vous avez été affecté au ticket #13	2026-06-20 07:56:57.351219	INTERNE	t	TICKET	13	Voir	3
-89	Vous avez été affecté à l'invitation : mlkjbhv	2026-06-21 20:32:59.07333	INTERNE	f	INVITATION	19	Voir	5
-88	Vous avez été affecté à l'invitation : mlkjbhv	2026-06-21 20:32:59.06333	INTERNE	t	INVITATION	19	Voir	3
-87	Vous avez été affecté à l'invitation : mlkjbhv	2026-06-21 20:32:24.925826	INTERNE	t	INVITATION	19	Voir	3
-90	Vous avez été affecté au ticket #17	2026-06-22 05:48:35.759125	INTERNE	t	TICKET	17	Voir	3
+705	🆕 Nouveau ticket créé : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-05 10:03:08.066494	INTERNE	f	TICKET	22	Voir	1
+706	🆕 Nouveau ticket créé : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-05 10:03:08.111284	INTERNE	f	TICKET	22	Voir	2
+708	🆕 Nouveau ticket créé : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-05 10:03:08.120921	INTERNE	f	TICKET	22	Voir	9
+709	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:06:51.696175	INTERNE	f	TICKET	23	Voir	1
+710	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:06:51.708615	INTERNE	f	TICKET	23	Voir	2
+712	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:06:51.727538	INTERNE	f	TICKET	23	Voir	9
+713	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:11:50.634182	INTERNE	f	TICKET	24	Voir	1
+714	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:11:50.640373	INTERNE	f	TICKET	24	Voir	2
+716	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:11:50.649386	INTERNE	f	TICKET	24	Voir	9
+715	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:11:50.645398	INTERNE	t	TICKET	24	Voir	3
+711	🆕 Nouveau ticket créé : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-05 10:06:51.719056	INTERNE	t	TICKET	23	Voir	3
+707	🆕 Nouveau ticket créé : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-05 10:03:08.117991	INTERNE	t	TICKET	22	Voir	3
+717	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #22 : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-07 10:11:00.78836	INTERNE	f	TICKET	22	Voir	1
+718	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #22 : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-07 10:11:00.879083	INTERNE	f	TICKET	22	Voir	2
+719	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #22 : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-07 10:11:00.884918	INTERNE	f	TICKET	22	Voir	3
+720	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #22 : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-07 10:11:00.892048	INTERNE	f	TICKET	22	Voir	9
+721	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #22 : [TEST] Ticket de test - integration assistant MESFPT - a ign…	2026-08-07 10:11:00.897306	INTERNE	f	TICKET	22	Voir	14
+722	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #23 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-07 10:11:00.911544	INTERNE	f	TICKET	23	Voir	1
+723	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #23 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-07 10:11:00.914065	INTERNE	f	TICKET	23	Voir	2
+724	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #23 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-07 10:11:00.916111	INTERNE	f	TICKET	23	Voir	3
+725	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #23 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-07 10:11:00.918129	INTERNE	f	TICKET	23	Voir	9
+726	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #23 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-07 10:11:00.919878	INTERNE	f	TICKET	23	Voir	14
+727	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #24 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-08 19:40:17.864757	INTERNE	f	TICKET	24	Voir	1
+728	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #24 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-08 19:40:17.904273	INTERNE	f	TICKET	24	Voir	2
+729	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #24 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-08 19:40:17.906955	INTERNE	f	TICKET	24	Voir	3
+730	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #24 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-08 19:40:17.907998	INTERNE	f	TICKET	24	Voir	9
+731	⏰ Le délai max sans affectation (48h) est dépassé pour le ticket #24 : Problème technique\n\nTicket généré par l'assistant de support…	2026-08-08 19:40:17.91006	INTERNE	f	TICKET	24	Voir	14
 \.
 
 
@@ -1028,14 +975,18 @@ COPY public.notification (id, message, date_envoi, canal, statut, categorie, res
 --
 
 COPY public.piece_jointe_invitation (id, nom, type, chemin, date_envoi, invitation_id) FROM stdin;
-1	invitation_28.pdf	application/pdf	invitations/1/35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28.pdf	2026-06-15 06:54:30.08294	1
-4	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (2).pdf	application/pdf	invitations/4/f09d0b13-f111-400f-9b0a-dcdb73fab61c_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (2).pdf	2026-06-16 01:28:28.530154	4
-5	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (3).pdf	application/pdf	invitations/4/b14206e8-904d-4941-8d5c-c3cd6631c115_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (3).pdf	2026-06-16 01:28:28.536152	4
-6	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (1).pdf	application/pdf	invitations/4/e9e65f62-3553-4d4d-b0af-ae4dd218741f_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (1).pdf	2026-06-16 01:28:28.538155	4
-7	35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (4).pdf	application/pdf	invitations/5/8770f262-8a04-4a02-9960-ea2be30190e2_35b9ef99-38ef-4389-a50f-2b9fe7fd639c_invitation_28 (4).pdf	2026-06-16 03:18:23.593344	5
-9	invitation_5.pdf	application/pdf	invitations/7/c2c20b8f-1764-416b-84d7-1190876b36ea_invitation_5.pdf	2026-06-16 05:00:45.250341	7
-10	invitation_30.pdf	application/pdf	invitations/8/99c2b855-be99-464e-a09e-57ddcdcee02a_invitation_30.pdf	2026-06-19 06:54:46.319709	8
-11	A.png	image/png	invitations/21/2a940650-99eb-4c10-ab69-9bd0b1266fc6_A.png	2026-06-22 05:03:28.606929	21
+5	invitation_15 (2).pdf	application/pdf	invitations/16/611f798b-7cd4-47e8-843a-e191852fda85_invitation_15 (2).pdf	2026-07-14 17:41:07.990096	16
+6	invitation_15 (2).pdf	application/pdf	invitations/17/507f23af-8e08-4c0d-8af0-ac65f655f3e4_invitation_15 (2).pdf	2026-07-14 17:44:50.69866	17
+7	invitation_17.pdf	application/pdf	invitations/18/c3a625c6-a05d-4c28-844b-53edc8b99fd4_invitation_17.pdf	2026-07-14 17:49:05.163793	18
+8	invitation_15 (2).pdf	application/pdf	invitations/18/2200dc1d-9166-4de7-9878-87a3fdd8910f_invitation_15 (2).pdf	2026-07-14 17:49:05.166789	18
+9	invitation_12 (2).pdf	application/pdf	invitations/18/aa9fd5e8-7a38-4bf9-b037-2bc24e691480_invitation_12 (2).pdf	2026-07-14 17:49:05.169791	18
+10	invitation_44 (2).pdf	application/pdf	invitations/18/b7f8f9de-7f6e-48bc-b1db-461dcb4c5cfd_invitation_44 (2).pdf	2026-07-14 17:49:05.172782	18
+11	invitation_21.pdf	application/pdf	invitations/22/4d7757a7-bc3a-47e3-beba-d7446b667ca5_invitation_21.pdf	2026-07-15 10:41:25.631453	22
+12	invitation_21.docx	application/vnd.openxmlformats-officedocument.wordprocessingml.document	invitations/22/6e32a5bd-c90a-4dda-8a5b-5ec4378289e0_invitation_21.docx	2026-07-15 10:41:25.633961	22
+13	invitation_20.pdf	application/pdf	invitations/22/bfb936d2-c181-4ece-a8f9-9a10cfb6635b_invitation_20.pdf	2026-07-15 10:41:25.636116	22
+14	invitation_20 (1).pdf	application/pdf	invitations/22/edefae06-274a-4967-8f93-e077f73a5e49_invitation_20 (1).pdf	2026-07-15 10:41:25.639121	22
+15	invitation_21.pdf	application/pdf	invitations/23/23d08fd2-930a-4e91-85ba-c3e6bb8ac3e8_invitation_21.pdf	2026-07-15 10:47:19.189384	23
+16	recepisse026467-097-03.pdf	application/pdf	invitations/24/761c41b8-a427-482b-a800-d2902b0f9803_recepisse026467-097-03.pdf	2026-07-24 11:22:52.135998	24
 \.
 
 
@@ -1044,26 +995,18 @@ COPY public.piece_jointe_invitation (id, nom, type, chemin, date_envoi, invitati
 --
 
 COPY public.piece_jointe_ticket (id, nom, type, chemin, date_envoi, ticket_id) FROM stdin;
-1	invitation_5.pdf	application/pdf	tickets/1/80bfc412-7c44-4fc3-a717-e419c4d20461_invitation_5.pdf	2026-06-16 05:29:22.695673	1
-2	B.png	image/png	tickets/2/da11f8d5-d56b-4877-9737-a3d07f5d50b1_B.png	2026-06-16 05:31:49.693036	2
-3	B.png	image/png	tickets/3/0c609640-4fef-47fd-b7f1-184625c46071_B.png	2026-06-17 07:16:25.429608	3
-5	Capture d'écran 2026-04-13 140604.png	image/png	tickets/5/4df68ff8-9680-4643-9ef3-460308b12ad6_Capture d'écran 2026-04-13 140604.png	2026-06-17 09:34:36.052561	5
-6	Capture d'écran 2026-04-09 112837.png	image/png	tickets/6/96cb62a9-82a9-4dc6-991e-b9090cb257a0_Capture d'écran 2026-04-09 112837.png	2026-06-17 09:41:45.343157	6
-7	Capture d'écran 2026-04-09 112837.png	image/png	tickets/7/ecc08629-478c-44b3-b51e-55a27726061c_Capture d'écran 2026-04-09 112837.png	2026-06-17 09:55:23.973698	7
-8	Capture d'écran 2026-04-09 112837.png	image/png	tickets/8/93e5fe80-d00d-47c4-a6bb-541eb03b9d85_Capture d'écran 2026-04-09 112837.png	2026-06-17 09:56:21.706841	8
-9	Capture d'écran 2026-04-09 112837.png	image/png	tickets/12/8fe4329e-d1a3-46f4-a8fd-e01e67607e0f_Capture d'écran 2026-04-09 112837.png	2026-06-17 11:04:47.503078	12
-10	Capture d'écran 2026-04-09 112837.png	image/png	tickets/13/8ec83f30-d4d6-4f3b-b360-ccc054f0eb01_Capture d'écran 2026-04-09 112837.png	2026-06-17 21:03:06.685113	13
-11	A.png	image/png	tickets/14/95976e9f-dd59-489d-80be-0883dbcd0f1e_A.png	2026-06-17 21:10:48.019891	14
-12	B.png	image/png	tickets/14/1944c450-762c-4128-8d06-5962b685321f_B.png	2026-06-17 21:10:48.026579	14
-13	Capture d'écran 2026-03-25 094806.png	image/png	tickets/14/d25aec71-f9ea-468f-96eb-4e2d9a4bc3b2_Capture d'écran 2026-03-25 094806.png	2026-06-17 21:10:48.026579	14
-14	C.png	image/png	tickets/14/6af7c8f2-d63c-49b6-aba4-0c28d7f05b8d_C.png	2026-06-17 21:10:48.035001	14
-15	Capture d'écran 2026-03-25 094806.png	image/png	tickets/15/0f86d12f-3397-48ec-8906-84057e0fbab7_Capture d'écran 2026-03-25 094806.png	2026-06-18 17:32:54.016591	15
-16	B.png	image/png	tickets/15/00289271-27e0-40bd-836b-573765a00d72_B.png	2026-06-18 17:32:54.023951	15
-17	C.png	image/png	tickets/15/ae259374-1a65-4ea6-88a7-dade954ce230_C.png	2026-06-18 17:32:54.025971	15
-26	A.png	image/png	tickets/17/f1196958-1d68-48e3-b5b2-8779aa2dc7d4_A.png	2026-06-22 01:34:02.315851	17
-27	B.png	image/png	tickets/17/a13bd7f1-5a33-4e48-b799-420a00e09565_B.png	2026-06-22 01:34:02.320853	17
-28	Capture d'écran 2026-06-21 160952.png	image/png	tickets/17/3e3acd5b-c4e1-4224-ba97-43e8504212b1_Capture d'écran 2026-06-21 160952.png	2026-06-22 01:34:02.321848	17
-29	Capture d'écran 2026-06-21 165421.png	image/png	tickets/17/d6b3f285-dfb1-4e94-bf24-b6770162cb6d_Capture d'écran 2026-06-21 165421.png	2026-06-22 01:34:02.322851	17
+35	A.png	image/png	tickets/21/67683a7e-208d-4656-9b7e-72d057cce264_A.png	2026-07-31 09:30:50.406743	21
+8	WhatsApp Image 2026-07-12 at 08.47.26.jpeg	image/jpeg	tickets/7/ed2f5980-854b-4203-88aa-ee31bf7c2ec4_WhatsApp Image 2026-07-12 at 08.47.26.jpeg	2026-07-14 16:27:02.125857	7
+9	WhatsApp Image 2026-07-12 at 08.47.02.jpeg	image/jpeg	tickets/7/3510a14c-2834-4d46-938f-94e6a720270d_WhatsApp Image 2026-07-12 at 08.47.02.jpeg	2026-07-14 16:27:02.133861	7
+10	WhatsApp Image 2026-07-08 at 22.50.24.jpeg	image/jpeg	tickets/7/c5493acd-5fa1-4d46-89a6-4e7962a31536_WhatsApp Image 2026-07-08 at 22.50.24.jpeg	2026-07-14 16:27:02.136856	7
+11	WhatsApp Image 2026-07-08 at 22.39.51.jpeg	image/jpeg	tickets/7/048b51ef-0c28-42b5-99e3-752d7d720ea3_WhatsApp Image 2026-07-08 at 22.39.51.jpeg	2026-07-14 16:27:02.138861	7
+12	WhatsApp Image 2026-07-08 at 22.45.54.jpeg	image/jpeg	tickets/7/111cac4d-ffdc-4444-a0c5-a6c58473a2c0_WhatsApp Image 2026-07-08 at 22.45.54.jpeg	2026-07-14 16:27:02.139864	7
+18	WhatsApp Image 2026-07-12 at 08.47.26.jpeg	image/jpeg	tickets/11/48b4f9be-48cf-48cd-9c4b-f219a1915fab_WhatsApp Image 2026-07-12 at 08.47.26.jpeg	2026-07-15 08:56:46.689221	11
+19	WhatsApp Image 2026-07-12 at 08.47.02.jpeg	image/jpeg	tickets/11/6bdbb05a-952f-4e87-b700-7b656e394d4e_WhatsApp Image 2026-07-12 at 08.47.02.jpeg	2026-07-15 08:56:46.690522	11
+27	WhatsApp Image 2026-07-12 at 08.47.26.jpeg	image/jpeg	tickets/15/24cb3f11-6b54-48a0-8c5b-bd4bade9ec79_WhatsApp Image 2026-07-12 at 08.47.26.jpeg	2026-07-15 10:49:08.085743	15
+28	WhatsApp Image 2026-07-12 at 08.47.02.jpeg	image/jpeg	tickets/15/3e54e081-7dfc-436e-b254-a671dfbca94f_WhatsApp Image 2026-07-12 at 08.47.02.jpeg	2026-07-15 10:49:08.088122	15
+29	WhatsApp Image 2026-07-08 at 22.50.24.jpeg	image/jpeg	tickets/15/be0602cd-5400-4a93-abe7-3d6b0df44a6e_WhatsApp Image 2026-07-08 at 22.50.24.jpeg	2026-07-15 10:49:08.089937	15
+30	WhatsApp Image 2026-07-08 at 22.45.54.jpeg	image/jpeg	tickets/15/9c3cbda0-1236-4153-83d7-e09c76661e7c_WhatsApp Image 2026-07-08 at 22.45.54.jpeg	2026-07-15 10:49:08.089937	15
 \.
 
 
@@ -1072,10 +1015,20 @@ COPY public.piece_jointe_ticket (id, nom, type, chemin, date_envoi, ticket_id) F
 --
 
 COPY public.role (id, nom, description) FROM stdin;
-1	ADMIN	AccÃ¨s complet
 2	AGENT_DSI	Gestion invitations et tickets
 3	SUPERVISEUR	Lecture et affectation
-4	USAGER	CrÃ©ation tickets uniquement
+5	SECRETAIRE	gestion des invitations
+1	ADMIN	Accès Complète au système
+4	USAGER	Creation tickets uniquement
+\.
+
+
+--
+-- Data for Name: role_permissions; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.role_permissions (role_id, permission) FROM stdin;
+5	CREER_TICKET
 \.
 
 
@@ -1084,10 +1037,14 @@ COPY public.role (id, nom, description) FROM stdin;
 --
 
 COPY public.service (id, nom, description, structure_id) FROM stdin;
-7	it	iert	\N
-8	Unité de système d'information	USI	\N
-9	SEST	Service Equipement et Support Technique	\N
-10	SRS	le Service Réseaux et Systèmes	\N
+9	SEST	Service Equipement et Support Technique	22
+10	SRS	le Service Réseaux et Systèmes	22
+14	Secrétariat		22
+13	SSQ	Le Service Sécurité et Qualité	22
+12	SEA	Le Service Etudes et Applications	22
+15	SAF	Le Service Administratif et Financier	22
+7	USI	Urbaniste des Systèmes d'information	22
+16	fhg		28
 \.
 
 
@@ -1096,9 +1053,9 @@ COPY public.service (id, nom, description, structure_id) FROM stdin;
 --
 
 COPY public.structure (id, nom, adresse, telephone, email) FROM stdin;
-20	commerce	ouaga	65748484	commerce@gmail.com
-21	bureau	bobo	75896985	bureau@gmail.com
 22	DSI	MESFPT	25252525	dsi@gmail.com
+28	ecommerce	\N	\N	\N
+32	Ministère de l'Enseignement Secondaire, de la Formation Professionnelle et Technique (MESFPT)	\N	\N	\N
 \.
 
 
@@ -1107,20 +1064,16 @@ COPY public.structure (id, nom, adresse, telephone, email) FROM stdin;
 --
 
 COPY public.structure_invitee (id, invitation_id, structure_id, statut_reponse, date_envoi, date_reponse, lettre_chemin, lettre_generee, commentaire) FROM stdin;
-1	8	20	EN_ATTENTE	2026-06-19 06:54:46.303617	\N	\N	f	\N
-2	9	21	EN_ATTENTE	2026-06-19 07:19:23.074521	\N	\N	f	\N
-3	10	21	EN_ATTENTE	2026-06-21 02:57:36.685561	\N	\N	f	\N
-4	11	20	EN_ATTENTE	2026-06-21 03:13:55.099342	\N	\N	f	\N
-5	12	21	EN_ATTENTE	2026-06-21 03:24:42.929749	\N	\N	f	\N
-6	13	21	EN_ATTENTE	2026-06-21 03:45:36.235815	\N	\N	f	\N
-7	15	21	EN_ATTENTE	2026-06-21 16:59:24.760508	\N	\N	f	\N
-8	16	21	EN_ATTENTE	2026-06-21 17:09:29.650376	\N	\N	f	\N
-9	17	21	EN_ATTENTE	2026-06-21 17:51:43.179098	\N	\N	f	\N
-10	18	21	EN_ATTENTE	2026-06-21 17:58:01.291955	\N	\N	f	\N
-11	19	21	EN_ATTENTE	2026-06-21 17:58:50.434513	\N	\N	f	\N
-12	20	22	EXCUSEE	2026-06-21 23:30:11.655173	\N	\N	f	\N
-13	21	22	EN_ATTENTE	2026-06-22 05:03:28.590316	\N	\N	f	\N
-14	21	21	EN_ATTENTE	2026-06-22 05:03:28.591226	\N	\N	f	\N
+45	15	22	EN_ATTENTE	2026-07-10 09:14:58.827982	\N	\N	f	\N
+46	16	22	EN_ATTENTE	2026-07-14 17:41:07.968113	\N	\N	f	\N
+47	17	22	EN_ATTENTE	2026-07-14 17:44:50.682527	\N	\N	f	\N
+48	17	28	EN_ATTENTE	2026-07-14 17:44:50.685523	\N	\N	f	\N
+49	19	22	EN_ATTENTE	2026-07-15 06:45:13.316812	\N	\N	f	\N
+50	20	22	EN_ATTENTE	2026-07-15 06:59:32.149583	\N	\N	f	\N
+51	21	22	EN_ATTENTE	2026-07-15 08:28:42.936119	\N	\N	f	\N
+52	23	22	EN_ATTENTE	2026-07-15 10:47:19.182383	\N	\N	f	\N
+53	23	28	EN_ATTENTE	2026-07-15 10:47:19.185382	\N	\N	f	\N
+54	24	22	EN_ATTENTE	2026-07-24 11:22:52.116575	\N	\N	f	\N
 \.
 
 
@@ -1128,22 +1081,15 @@ COPY public.structure_invitee (id, invitation_id, structure_id, statut_reponse, 
 -- Data for Name: ticket; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.ticket (id, date_creation, statut, priorite, solution, structure_id, createur_id, description, whatsapp) FROM stdin;
-1	2026-06-16 05:29:22.667885	EN_ATTENTE	MOYENNE	\N	\N	\N	djk	\N
-2	2026-06-16 05:31:49.686064	EN_COURS	MOYENNE	\N	\N	\N	yujk	\N
-3	2026-06-17 07:16:25.404322	EN_PAUSE	MOYENNE	\N	\N	3	sdfghjk	\N
-11	2026-06-17 10:57:01.993226	EN_ATTENTE	MOYENNE	\N	\N	3	jksn	+22606031093
-5	2026-06-17 09:34:36.045448	EN_PAUSE	MOYENNE	\N	\N	3	dfcghjk	+22606031093
-9	2026-06-17 10:07:26.067231	EN_ATTENTE	MOYENNE	\N	\N	\N	bnk	+22606031093
-10	2026-06-17 10:17:08.626071	EN_ATTENTE	MOYENNE	\N	\N	\N	ghjkl;	+22606031093
-12	2026-06-17 11:04:47.419852	EN_ATTENTE	MOYENNE	\N	\N	\N	cvghjzkl	+22605686969
-6	2026-06-17 09:41:45.336069	EN_PAUSE	MOYENNE	\N	\N	3	xcvbn	+26606031093
-7	2026-06-17 09:55:23.967713	EN_ATTENTE	MOYENNE	\N	\N	\N	xghvbn	+22606031093
-8	2026-06-17 09:56:21.699923	EN_ATTENTE	MOYENNE	\N	\N	\N	fghj	+22606031093
-14	2026-06-17 21:10:47.701583	EN_PAUSE	MOYENNE	\N	\N	\N	teue	+22606031093
-15	2026-06-18 17:32:53.902927	EN_ATTENTE	FAIBLE	\N	20	\N	dfghjk	\N
-13	2026-06-17 21:03:06.598874	EN_COURS	MOYENNE	\N	\N	\N	hgfghj	+22606031093
-17	2026-06-22 01:34:02.292781	EN_COURS	MOYENNE	\N	22	\N	poiuyu	78659854
+COPY public.ticket (id, date_creation, statut, priorite, solution, structure_id, createur_id, description, whatsapp, alerte_delai_envoyee) FROM stdin;
+21	2026-07-31 09:30:50.309432	EN_COURS	ELEVEE	\N	22	3	imprimante	76767878	f
+11	2026-07-15 08:56:46.674985	FERME	MOYENNE	debrancher puis rebrancher	22	3	probleme de cable reseau	76847464	t
+22	2026-08-05 10:03:07.910974	EN_ATTENTE	MOYENNE	\N	\N	\N	[TEST] Ticket de test - integration assistant MESFPT - a ignorer/supprimer	\N	t
+23	2026-08-05 10:06:51.653495	EN_ATTENTE	MOYENNE	\N	22	\N	Problème technique\n\nTicket généré par l'assistant de support technique.\n\nDemandeur : Test Madina\nEmail : test@mesfpt.bf\nTéléphone : 70000000\nService : DSI\n\nRésumé de l'échange :\n- Agent : je veux creer un ticket, mon ecran ne saffiche plus du tout\n- Assistant : Je vais transmettre ce problème à un technicien. Pour qu'il sache qui contacter et où intervenir, merci de renseigner vos coordonnées ci-dessous.\n\nOrigine : demande explicite de l'agent	\N	t
+24	2026-08-05 10:11:50.610692	EN_ATTENTE	MOYENNE	\N	22	\N	Problème technique\n\nTicket généré par l'assistant de support technique.\n\nDemandeur : sibalo madina\nEmail : sibalomadina@gmail.com\nTéléphone : 67378432\nService : DSI\n\nRésumé de l'échange :\n- Agent : ma moto est en panne\n- Assistant : Je n'ai pas de fiche de dépannage pour ce type de problème. Un technicien va prendre le relais.\n\nOrigine : aucune fiche de dépannage disponible pour ce sujet	\N	t
+7	2026-07-14 16:27:02.066015	RESOLU	MOYENNE	kjlhnss,xns	22	\N	imprimante	06031093	f
+15	2026-07-15 10:49:08.054894	EN_COURS	MOYENNE	\N	22	\N	pc marche pas	76787634	f
+8	2026-07-15 01:32:53.78368	EN_COURS	ELEVEE	\N	22	\N	jhvc	76876564	f
 \.
 
 
@@ -1153,17 +1099,32 @@ COPY public.ticket (id, date_creation, statut, priorite, solution, structure_id,
 
 COPY public.utilisateur (user_id, nom, prenom, email, telephone, mot_de_passe, date_creation, iu, actif, service_id, structure_id) FROM stdin;
 2	Administrateur	SystŠme	admin@dsi.gov.bf	\N	$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWa	2026-06-02 22:43:30.2918	ADM-001	t	\N	\N
-3	Admin	DSI	admin2@dsi.gov.bf	\N	$2a$10$a9eCuoE6YfaVu9jc3z1RHuDZ4jlTsiLXMK/k5AFLGzulU5jLD/Z2G	2026-06-02 22:52:48.08875	\N	t	\N	\N
-4	konate	rachi	rachi1@gmail.com	\N	$2a$10$.PSKtKJTejrgQLYNq7e6l.d94cA3M/8yJAWTHyJFxmffmTCfR6wei	2026-06-03 13:13:24.60639	\N	t	\N	\N
 5	barro	rachid	rachid@gmail.com	76546354	$2a$10$x9EnQJpMztr6vEuPN6BvX.G1zxV6WsD3VfGNp0OSg/GeQKQe.ql5C	2026-06-03 13:21:00.936637	1233	t	\N	\N
 8	kone	rachi	kone@gmail.com	\N	$2a$10$zpVbSZXy0/AFzLElWvoKSe1xShtq2Xvt0iNN.aW8ye0yktnBg7NRW	2026-06-09 19:26:07.561549	\N	t	\N	\N
-9	rachida	barro	rachidabarro@gmail.com	76847464	$2a$10$UHpIq24G/qOzuynyax7cMuJywrFaJpoCzDsBSvL4/A1819vwW2d8e	2026-06-09 23:16:42.856016	23	t	\N	\N
-1	rachi	konte	rachi@gmail.com	54637383	$2a$10$X.J.YQwzP2zLhhk3LobZwORPc2C12p8aWXI6PH3I9TNaXPhouHH3y	2026-06-01 15:54:10.743005	1234	t	\N	\N
+27	barro	fadila	fadila@gmail.com	\N	$2a$10$lAuyOxJtRmmCAOq3KT1SCOtY9Ny/EBcSm0Wka454yFi2HI1sQy7m2	2026-07-15 20:47:41.712112	\N	t	10	22
+24	KORGO	Kadigueta	kadiguetakorgo77@gmail.com	64154748	$2a$10$Lc7.uLKOM4.5FzIiWpOnTe8pLcOvMsiMDlqy1bNZKK3j4U.Bkg0Ai	2026-07-15 09:33:31.4031	N010203	t	\N	\N
+4	konate	rachi	rachi1@gmail.com	\N	$2a$10$.PSKtKJTejrgQLYNq7e6l.d94cA3M/8yJAWTHyJFxmffmTCfR6wei	2026-06-03 13:13:24.60639	\N	t	10	22
 10	raz	ros	rosraz@gmail.com	\N	$2a$10$Hx.0iIjXgnMrFdlE3tbfRu3d33gSOBIsx3jXQHyOVixqQsTh4FdaG	2026-06-11 21:05:53.520787	\N	t	\N	\N
 11	nomo	mom	nomo@gmail.com	\N	$2a$10$pzUs8C2BpV5wdith/OP9nOV9XBHVVerHzhT4Bx4UK5BxqOo4BWTx2	2026-06-14 19:15:54.146221	\N	t	\N	\N
-7	barro	prenom	rachidabarro66@gmail.com	67847383	$2a$10$OLk2vwQyQ2zPDyiKJVIghuOButJArvAUWcaHAScz0rwDwYeHbaoZK	2026-06-09 01:17:40.932874	123	t	\N	\N
 12	nnn	lk	nnn@gmail.com	\N	$2a$10$qyqHtCcA9QiM/RWUx9OFRuteLlbBmS762tHMp9DkAgnGb0bNxeo3u	2026-06-14 19:20:22.022311	\N	f	\N	\N
-6	barro	rachi	rachidabarro98@mail.com	78674345	$2a$10$8zeyvxNk9YrYzl1Vsp/P.ulTUOlsd5zpiS98rfGvvRujMaDNGTQry	2026-06-09 01:10:57.386182	4354	f	\N	\N
+13	konte	fatou	fatou@gmail.com	67584949	$2a$10$7rQfi5Y0QXd5qGnRB8r.VeA5dI11LGURFnvNZKfxIzkd/Pjb9HTvO	2026-06-27 22:49:46.156695	874894	t	\N	\N
+3	Admin	DSI	admin2@dsi.gov.bf	\N	$2a$10$a9eCuoE6YfaVu9jc3z1RHuDZ4jlTsiLXMK/k5AFLGzulU5jLD/Z2G	2026-06-02 22:52:48.08875	\N	f	\N	\N
+1	rachi	konte	rachi@gmail.com	54637383	$2a$10$X.J.YQwzP2zLhhk3LobZwORPc2C12p8aWXI6PH3I9TNaXPhouHH3y	2026-06-01 15:54:10.743005	1234	f	\N	\N
+9	rachida	barro	rachidabarro@gmail.com	76847464	$2a$10$UHpIq24G/qOzuynyax7cMuJywrFaJpoCzDsBSvL4/A1819vwW2d8e	2026-06-09 23:16:42.856016	23	f	\N	\N
+14	barro	rachida	rachidabarro98@gmail.com	\N	$2a$10$7WlHCKymUIZ6DxBiJan.CegynLpwo4pBFtKBShHgUuKadQOK3HobC	2026-06-29 20:47:45.889961	\N	t	\N	\N
+15	konate	fati	fati@gmail.com	67898989	$2a$10$lEWEG3qdc/KIwTmVln23k.QDkg4D3AFmjAZOXX4JOGoxzzjGo/QjC	2026-06-30 09:54:10.053875	876767	t	\N	\N
+17	mlkjhgc	kjhgc	jkhgfd@gmail.com	54656567	$2a$10$PNwyujsuW9wX/F07aQrDfez90vPjscuFfj8qqNs1lRNpdBSTODhBe	2026-07-01 20:11:18.07546	\N	t	\N	\N
+16					$2a$10$E8iDm2qhreqdb.aZ7yLWsOsoTQUlh9C6JzjRCqsxxQ0FRRNx3k/3W	2026-07-01 13:31:15.885897	\N	f	\N	\N
+18	sanogo	rachi	sanogo@gmail.com	76876564	$2a$10$LRXWFdcqu98birOcvaOcy.kHVOCr5DrcRtkTk.1z9322GHK55nQ/m	2026-07-04 13:23:04.71785	3456	t	\N	\N
+6	barro	rachi	rachidabarro98@mail.com	78674345	$2a$10$8zeyvxNk9YrYzl1Vsp/P.ulTUOlsd5zpiS98rfGvvRujMaDNGTQry	2026-06-09 01:10:57.386182	4354	t	\N	\N
+7	barro	prenom	rachidabarro66@gmail.com	67847383	$2a$10$q6XABO/VplgXkTzs8mdcHOtJhZQzwt4Cj/StbKBeX1LN2w/6g0SsK	2026-06-09 01:17:40.932874	123	f	\N	\N
+19	blll	isisbb	zongoismael48@gmail.com	76199145	$2a$10$JCdrnpRPElkunBC8iaT0SeF3kitt5jBUxy6Cxi388ilF/DB2ntdRm	2026-07-09 13:52:22.998981	\N	t	\N	\N
+20	toto	ali	ali@gmail.com	76654534	$2a$10$L0ygnscqnoJfl0j8laU7deks/GbZd1vPZZMn9klxZFBywp3SeCFQG	2026-07-14 16:23:34.196279	34456	t	\N	\N
+21	ali	toto	almissikindo7@gmail.com	\N	$2a$10$LFCeNiuOh5j1PuQe1CH3veTgY/ovgmLg0PZLiVSmcRy2rmNqmMAy2	2026-07-14 16:50:50.087589	\N	t	\N	\N
+22	titi	toto	toto@gmail.com	56789098	$2a$10$HSQ.fvVl7iAGiZos.oC5zuI9QjrdChZLLrPC3Tvs5B32mPb/RTFpi	2026-07-15 01:24:48.038186	34655	t	\N	\N
+23	layla	kone	hamadyleylatou@gmail.com	73805108	$2a$10$k1qpxeBTuKWQ2nbUNHkX2OQHSH68wX6Kzaq0L709viEJI.a4WCJz6	2026-07-15 09:02:45.960085	4565	t	\N	\N
+25	konate	rachi	konate@gmail.com	67656765	$2a$10$k8LyOrq0nw4i7lIAh.zY/usMyl4GOvWV0wN68YMeztgVA5BCDj6oa	2026-07-15 10:36:59.321697	6756	t	\N	\N
+26	OUEDRAOGO	Adolphe	adolphe.ouedraogo@formationpro.gov.bf	\N	$2a$10$/jYjK8mzIS2Tm.TlczTv9uLcVtmaYGHoZdW3OQ5IyXUXWIfE205/q	2026-07-15 10:54:49.059961	\N	t	\N	\N
 \.
 
 
@@ -1184,6 +1145,21 @@ COPY public.utilisateur_role (id, user_id, role_id) FROM stdin;
 14	10	2
 15	12	4
 16	11	2
+17	13	4
+18	14	5
+19	15	4
+20	16	4
+21	17	4
+22	18	4
+23	19	4
+24	20	4
+25	21	2
+26	22	4
+27	23	4
+28	24	4
+29	25	4
+30	26	2
+31	27	2
 \.
 
 
@@ -1191,14 +1167,14 @@ COPY public.utilisateur_role (id, user_id, role_id) FROM stdin;
 -- Name: affectation_invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.affectation_invitation_id_seq', 10, true);
+SELECT pg_catalog.setval('public.affectation_invitation_id_seq', 6, true);
 
 
 --
 -- Name: affectation_ticket_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.affectation_ticket_id_seq', 12, true);
+SELECT pg_catalog.setval('public.affectation_ticket_id_seq', 21, true);
 
 
 --
@@ -1226,77 +1202,77 @@ SELECT pg_catalog.setval('public.communication_id_seq', 1, false);
 -- Name: invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.invitation_id_seq', 21, true);
+SELECT pg_catalog.setval('public.invitation_id_seq', 24, true);
 
 
 --
 -- Name: notification_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.notification_id_seq', 90, true);
+SELECT pg_catalog.setval('public.notification_id_seq', 731, true);
 
 
 --
 -- Name: piece_jointe_invitation_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.piece_jointe_invitation_id_seq', 11, true);
+SELECT pg_catalog.setval('public.piece_jointe_invitation_id_seq', 16, true);
 
 
 --
 -- Name: piece_jointe_ticket_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.piece_jointe_ticket_id_seq', 29, true);
+SELECT pg_catalog.setval('public.piece_jointe_ticket_id_seq', 35, true);
 
 
 --
 -- Name: role_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.role_id_seq', 4, true);
+SELECT pg_catalog.setval('public.role_id_seq', 5, true);
 
 
 --
 -- Name: service_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.service_id_seq', 10, true);
+SELECT pg_catalog.setval('public.service_id_seq', 16, true);
 
 
 --
 -- Name: structure_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.structure_id_seq', 22, true);
+SELECT pg_catalog.setval('public.structure_id_seq', 34, true);
 
 
 --
 -- Name: structure_invitee_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.structure_invitee_id_seq', 14, true);
+SELECT pg_catalog.setval('public.structure_invitee_id_seq', 54, true);
 
 
 --
 -- Name: ticket_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.ticket_id_seq', 17, true);
+SELECT pg_catalog.setval('public.ticket_id_seq', 24, true);
 
 
 --
 -- Name: utilisateur_role_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.utilisateur_role_id_seq', 16, true);
+SELECT pg_catalog.setval('public.utilisateur_role_id_seq', 31, true);
 
 
 --
 -- Name: utilisateur_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.utilisateur_user_id_seq', 12, true);
+SELECT pg_catalog.setval('public.utilisateur_user_id_seq', 27, true);
 
 
 --
@@ -1670,6 +1646,14 @@ ALTER TABLE ONLY public.service
 
 
 --
+-- Name: role_permissions fklodb7xh4a2xjv39gc3lsop95n; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.role_permissions
+    ADD CONSTRAINT fklodb7xh4a2xjv39gc3lsop95n FOREIGN KEY (role_id) REFERENCES public.role(id);
+
+
+--
 -- Name: invitation invitation_structure_emettrice_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1776,5 +1760,5 @@ REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict BaYpetEh4MJBlTqmhK8F6qS0tT63NPNUsZI59F1JSd2V7rXlf30iCwTgkXI64UI
+\unrestrict wuFfvnIOmzSVZVw89TeUvfwh9eRULckRGJuPeU2HMbZksePz3UDJIYFto2MJCfI
 

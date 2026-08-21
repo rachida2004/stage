@@ -156,24 +156,36 @@ class _TicketsScreenState extends State<TicketsScreen> {
                   ? const Center(child: Text('Aucun ticket trouvé', style: TextStyle(color: AppColors.muted)))
                   : RefreshIndicator(
                       onRefresh: () async => context.read<TicketBloc>().add(LoadTickets()),
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (ctx, i) => _TicketCard(
-                          ticket: filtered[i],
-                          // 🎯 On recharge systématiquement la liste au retour de
-                          // l'écran détail (Navigator.pop), qu'un changement ait
-                          // eu lieu ou non — changement de statut, affectation,
-                          // modification, message, tout ça se passe dans le
-                          // détail sans jamais mettre à jour la liste sous-jacente
-                          // tant qu'on ne revient pas dessus.
-                          onTap: () => Navigator.push(ctx,
-                            MaterialPageRoute(builder: (_) => TicketDetailScreen(ticket: filtered[i])))
-                              .then((_) {
-                            if (ctx.mounted) ctx.read<TicketBloc>().add(LoadTickets());
-                          }),
-                        ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // 🎯 Grille de cartes carrées : 2 colonnes en mobile,
+                          // davantage sur les écrans larges (web/tablette).
+                          final int colonnes = (constraints.maxWidth / 220).floor().clamp(2, 4);
+                          return GridView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                            itemCount: filtered.length,
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: colonnes,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: 0.92, // légèrement plus haute que large : reste "carrée"
+                            ),
+                            itemBuilder: (ctx, i) => _TicketCard(
+                              ticket: filtered[i],
+                              // 🎯 On recharge systématiquement la liste au retour de
+                              // l'écran détail (Navigator.pop), qu'un changement ait
+                              // eu lieu ou non — changement de statut, affectation,
+                              // modification, message, tout ça se passe dans le
+                              // détail sans jamais mettre à jour la liste sous-jacente
+                              // tant qu'on ne revient pas dessus.
+                              onTap: () => Navigator.push(ctx,
+                                MaterialPageRoute(builder: (_) => TicketDetailScreen(ticket: filtered[i])))
+                                  .then((_) {
+                                if (ctx.mounted) ctx.read<TicketBloc>().add(LoadTickets());
+                              }),
+                            ),
+                          );
+                        },
                       ),
                     ),
             ),
@@ -233,44 +245,150 @@ class _TicketCard extends StatelessWidget {
   final VoidCallback onTap;
   const _TicketCard({required this.ticket, required this.onTap});
 
+  Color get _couleurPriorite {
+    switch (ticket.priority) {
+      case TicketPriority.haute: return AppColors.danger;
+      case TicketPriority.normale: return AppColors.warning;
+      case TicketPriority.basse: return const Color.fromARGB(255, 42, 157, 0);
+    }
+  }
+
+  // 🎯 Petit formatage de date relative "maison" (pas de dépendance intl
+  // supplémentaire, le projet ne l'utilise pas ailleurs).
+  String get _dateRelative {
+    final diff = DateTime.now().difference(ticket.createdAt);
+    if (diff.inMinutes < 1) return "À l'instant";
+    if (diff.inHours < 1) return '${diff.inMinutes} min';
+    if (diff.inHours < 24) return '${diff.inHours} h';
+    if (diff.inDays == 1) return 'Hier';
+    if (diff.inDays < 7) return '${diff.inDays} j';
+    return '${ticket.createdAt.day.toString().padLeft(2, '0')}/${ticket.createdAt.month.toString().padLeft(2, '0')}';
+  }
+
+  // 🎯 Au niveau de la structure "DSI", on affiche le vrai logo (asset déjà
+  // utilisé pour l'en-tête des lettres officielles) plutôt qu'une icône
+  // générique de bâtiment, pour un rendu plus institutionnel.
+  bool get _estDsi => ticket.structure.toLowerCase().contains('dsi');
+
   @override
   Widget build(BuildContext context) {
-    Color iconBg;
-    switch (ticket.priority) {
-      case TicketPriority.haute: iconBg = AppColors.dangerLight; break;
-      case TicketPriority.normale: iconBg = AppColors.warningLight; break;
-      case TicketPriority.basse: iconBg = AppColors.successLight; break;
-    }
-    return AppCard(
-      onTap: onTap,
-      child: Row(children: [
-        Container(
-          width: 42, height: 42,
-          decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(10)),
-          child: Center(child: Text('#${ticket.id}',
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.muted))),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(ticket.description,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 3),
-            Text(
-              ticket.agentAssigneNom != null ? 'Agent: ${ticket.agentAssigneNom}' : 'Non affecté',
-              style: const TextStyle(fontSize: 11, color: AppColors.muted),
+    final couleur = _couleurPriorite;
+    final bool nonAffecte = ticket.agentAssigneNom == null;
+    final int nbMessages = ticket.messages.length;
+    final int nbPieces = ticket.attachments.length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7EBF0)),
+        boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 3))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Bandeau coloré selon la priorité (en tête, format carré) ──
+            Container(height: 4, color: couleur),
+
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── En-tête : logo/structure + statut ─────────────────
+                    Row(
+                      children: [
+                        _estDsi
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.asset('assets/images/logo.jpg',
+                                    width: 28, height: 28, fit: BoxFit.cover),
+                              )
+                            : Container(
+                                width: 28, height: 28,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: couleur.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(Icons.apartment_outlined, size: 15, color: couleur),
+                              ),
+                        const Spacer(),
+                        StatusBadge.fromTicketStatus(ticket.status),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // ── N° + description (occupe l'espace disponible) ────
+                    Text('N°${ticket.id}',
+                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: couleur)),
+                    const SizedBox(height: 2),
+                    Expanded(
+                      child: Text(
+                        ticket.description,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.25),
+                        maxLines: 3, overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+
+                    // ── Priorité ────────────────────────────────────────
+                    PriorityBadge(priority: ticket.priority),
+                    const SizedBox(height: 6),
+
+                    // ── Agent affecté ─────────────────────────────────────
+                    Row(
+                      children: [
+                        Icon(nonAffecte ? Icons.person_off_outlined : Icons.person_outline,
+                            size: 12, color: nonAffecte ? AppColors.warning : AppColors.muted),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            nonAffecte ? 'Non affecté' : ticket.agentAssigneNom!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: nonAffecte ? FontWeight.w600 : FontWeight.normal,
+                              color: nonAffecte ? AppColors.warning : AppColors.muted,
+                            ),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Container(height: 1, color: const Color(0xFFF0F2F5)),
+                    const SizedBox(height: 4),
+
+                    // ── Pied : date + compteurs ────────────────────────
+                    Row(
+                      children: [
+                        const Icon(Icons.schedule_outlined, size: 11, color: AppColors.muted),
+                        const SizedBox(width: 3),
+                        Text(_dateRelative, style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                        const Spacer(),
+                        if (nbMessages > 0) ...[
+                          const Icon(Icons.chat_bubble_outline, size: 12, color: AppColors.muted),
+                          const SizedBox(width: 2),
+                          Text('$nbMessages', style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                          const SizedBox(width: 8),
+                        ],
+                        if (nbPieces > 0) ...[
+                          const Icon(Icons.attach_file, size: 12, color: AppColors.muted),
+                          const SizedBox(width: 2),
+                          Text('$nbPieces', style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 6),
-            Row(children: [
-              StatusBadge.fromTicketStatus(ticket.status),
-              const SizedBox(width: 8),
-              PriorityBadge(priority: ticket.priority),
-            ]),
-          ]),
+          ],
         ),
-        const Icon(Icons.chevron_right, size: 18, color: AppColors.muted),
-      ]),
+      ),
     );
   }
 }
@@ -618,7 +736,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           if (state is TicketError && state.msg.isNotEmpty) {
             final pasDeDroits = state.msg.contains('droits nécessaires') || state.msg.contains('session a expiré');
             return Scaffold(
-              appBar: AppBar(title: Text('#${widget.ticket.id}')),
+              appBar: AppBar(title: Text('N°${widget.ticket.id}')),
               body: Center(
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Text(state.msg, style: TextStyle(color: pasDeDroits ? Colors.orange[800] : Colors.red), textAlign: TextAlign.center),
@@ -638,7 +756,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Text('#${t.id}', style: const TextStyle(fontSize: 15)),
+              title: Text('N°${t.id}', style: const TextStyle(fontSize: 15)),
               actions: [
                 // Bouton WhatsApp dans l'AppBar si numéro disponible
                 // 🎯 L'usager ne doit pas voir le lien WhatsApp (réservé au
@@ -739,7 +857,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     ]),
                     const SizedBox(height: 8),
                     Row(children: [
-                      const Icon(Icons.business_outlined, size: 14, color: AppColors.muted),
+                      // 🎯 Même logique que sur les cartes de la liste : le
+                      // logo institutionnel remplace l'icône générique quand
+                      // la structure concernée est la DSI.
+                      t.structure.toLowerCase().contains('dsi')
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Image.asset('assets/images/logo.jpg', width: 16, height: 16, fit: BoxFit.cover),
+                            )
+                          : const Icon(Icons.business_outlined, size: 14, color: AppColors.muted),
                       const SizedBox(width: 4),
                       Flexible(child: Text(t.structure, style: const TextStyle(fontSize: 12, color: AppColors.muted), overflow: TextOverflow.ellipsis)),
                       const SizedBox(width: 12),
