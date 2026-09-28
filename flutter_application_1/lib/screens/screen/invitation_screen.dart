@@ -88,6 +88,7 @@ class _InvitationScreenState extends State<InvitationScreen> {
       initialDate: DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
+      builder: (ctx, child) => Theme(data: AppTheme.lightTheme, child: child!),
     );
     if (d != null) setState(() { if (isDebut) _dateDebut = d; else _dateFin = d; });
   }

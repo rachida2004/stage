@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -20,9 +22,20 @@ class TicketsScreen extends StatefulWidget {
   State<TicketsScreen> createState() => _TicketsScreenState();
 }
 
+enum _Groupement { aucun, annee, mois, jour }
+
 class _TicketsScreenState extends State<TicketsScreen> {
   String _search = '';
   TicketStatus? _filterStatus;
+  // 🎯 Pagination côté client, même logique que sur l'écran Invitations.
+  int _currentPage = 0;
+  static const int _itemsPerPage = 10;
+  _Groupement _groupement = _Groupement.aucun;
+
+  static const _moisFr = [
+    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+  ];
 
   // 🎯 Le TicketBloc est PARTAGÉ avec l'écran de détail (changement de
   // statut, affectation, messages...). Ouvrir un ticket émet des états
@@ -51,6 +64,113 @@ class _TicketsScreenState extends State<TicketsScreen> {
       final matchStatus = _filterStatus == null || t.status == _filterStatus;
       return matchSearch && matchStatus;
     }).toList();
+  }
+
+  // 🎯 Regroupe les tickets déjà filtrés en sections (année, mois ou jour),
+  // triées de la période la plus récente à la plus ancienne. Utilisé
+  // uniquement quand un classement est sélectionné (sinon liste à plat).
+  List<MapEntry<String, List<Ticket>>> _grouperTickets(List<Ticket> tickets) {
+    final Map<String, List<Ticket>> groupes = {};
+    final Map<String, DateTime> cleVersDate = {};
+
+    for (final t in tickets) {
+      final d = t.createdAt;
+      late final String cle;
+      late final DateTime dateRepere;
+      switch (_groupement) {
+        case _Groupement.annee:
+          cle = '${d.year}';
+          dateRepere = DateTime(d.year);
+          break;
+        case _Groupement.mois:
+          cle = '${_moisFr[d.month - 1]} ${d.year}';
+          dateRepere = DateTime(d.year, d.month);
+          break;
+        case _Groupement.jour:
+          cle = '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+          dateRepere = DateTime(d.year, d.month, d.day);
+          break;
+        case _Groupement.aucun:
+          cle = '';
+          dateRepere = d;
+          break;
+      }
+      groupes.putIfAbsent(cle, () => []).add(t);
+      cleVersDate[cle] = dateRepere;
+    }
+
+    final entrees = groupes.entries.toList()
+      ..sort((a, b) => cleVersDate[b.key]!.compareTo(cleVersDate[a.key]!));
+    return entrees;
+  }
+
+  String _libelleGroupement(_Groupement g) {
+    switch (g) {
+      case _Groupement.aucun: return 'Aucun classement';
+      case _Groupement.annee: return 'Par année';
+      case _Groupement.mois: return 'Par mois';
+      case _Groupement.jour: return 'Par jour';
+    }
+  }
+
+  // 🎯 Factorisé : utilisé à la fois par la grille à plat et par les
+  // sections groupées, pour ne pas dupliquer la logique de navigation
+  // + rechargement au retour.
+  Widget _ticketTile(BuildContext ctx, Ticket ticket) {
+    return TicketCard(
+      ticket: ticket,
+      onTap: () => Navigator.push(ctx,
+        MaterialPageRoute(builder: (_) => TicketDetailScreen(ticket: ticket)))
+          .then((_) {
+        if (ctx.mounted) ctx.read<TicketBloc>().add(LoadTickets());
+      }),
+    );
+  }
+
+  // 🎯 Vue groupée : une section par période (année/mois/jour), la plus
+  // récente en premier, chacune avec son propre mini-grille de cartes.
+  Widget _buildGroupedList(BuildContext context, List<Ticket> tickets) {
+    final groupes = _grouperTickets(tickets);
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      itemCount: groupes.length,
+      itemBuilder: (context, i) {
+        final entree = groupes[i];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 14, bottom: 10),
+              child: Row(children: [
+                Container(
+                  width: 4, height: 16,
+                  decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(2)),
+                ),
+                const SizedBox(width: 8),
+                Text(entree.key, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: Colors.black87)),
+                const SizedBox(width: 8),
+                Text('(${entree.value.length})', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              ]),
+            ),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: entree.value.length,
+              // 🎯 Cartes compactes, taille fixe (au lieu d'un ratio calculé sur
+              // le nombre de colonnes) : le nombre de colonnes s'adapte tout
+              // seul à la largeur (2 sur mobile, davantage sur web/tablette).
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 230,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                mainAxisExtent: 252,
+              ),
+              itemBuilder: (ctx, j) => _ticketTile(ctx, entree.value[j]),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -126,69 +246,133 @@ class _TicketsScreenState extends State<TicketsScreen> {
               child: Column(children: [
                 AppSearchBar(
                   hint: 'Rechercher un ticket...',
-                  onChanged: (v) => setState(() => _search = v),
+                  onChanged: (v) => setState(() { _search = v; _currentPage = 0; }),
                 ),
                 const SizedBox(height: 10),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    _FilterChip(
-                      label: 'Tous',
-                      selected: _filterStatus == null,
-                      onTap: () => setState(() => _filterStatus = null),
-                    ),
-                    const SizedBox(width: 6),
-                    ...TicketStatus.values.map((s) => Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: _FilterChip(
-                          label: s.label,
-                          selected: _filterStatus == s,
-                          onTap: () => setState(() => _filterStatus = _filterStatus == s ? null : s),
+                // ── Filtres : statut + classement par période (dropdowns) ──
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<TicketStatus?>(
+                          value: _filterStatus,
+                          icon: const Icon(Icons.keyboard_arrow_down, size: 20, color: AppColors.muted),
+                          style: const TextStyle(fontSize: 13.5, color: Colors.black87, fontWeight: FontWeight.w600),
+                          items: [
+                            const DropdownMenuItem<TicketStatus?>(
+                              value: null,
+                              child: Text('Tous les statuts'),
+                            ),
+                            ...TicketStatus.values.map((s) => DropdownMenuItem<TicketStatus?>(
+                                  value: s,
+                                  child: Text(s.label),
+                                )),
+                          ],
+                          onChanged: (s) => setState(() { _filterStatus = s; _currentPage = 0; }),
                         ),
-                      )),
-                  ]),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<_Groupement>(
+                          value: _groupement,
+                          icon: const Icon(Icons.keyboard_arrow_down, size: 20, color: AppColors.muted),
+                          style: const TextStyle(fontSize: 13.5, color: Colors.black87, fontWeight: FontWeight.w600),
+                          items: [
+                            for (final g in _Groupement.values)
+                              DropdownMenuItem<_Groupement>(
+                                value: g,
+                                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                  const Icon(Icons.calendar_today_outlined, size: 15, color: AppColors.muted),
+                                  const SizedBox(width: 6),
+                                  Text(_libelleGroupement(g)),
+                                ]),
+                              ),
+                          ],
+                          onChanged: (g) => setState(() { _groupement = g ?? _Groupement.aucun; _currentPage = 0; }),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ]),
             ),
             const SizedBox(height: 8),
-            Expanded(
-              child: filtered.isEmpty && !isLoading
-                  ? const Center(child: Text('Aucun ticket trouvé', style: TextStyle(color: AppColors.muted)))
-                  : RefreshIndicator(
-                      onRefresh: () async => context.read<TicketBloc>().add(LoadTickets()),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // 🎯 Grille de cartes carrées : 2 colonnes en mobile,
-                          // davantage sur les écrans larges (web/tablette).
-                          final int colonnes = (constraints.maxWidth / 220).floor().clamp(2, 4);
-                          return GridView.builder(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                            itemCount: filtered.length,
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: colonnes,
-                              mainAxisSpacing: 12,
-                              crossAxisSpacing: 12,
-                              childAspectRatio: 0.92, // légèrement plus haute que large : reste "carrée"
+            // 🎯 Pagination : uniquement sur la vue grille "sans groupement"
+            // — avec un groupement par période, les en-têtes de section ne
+            // se prêtent pas à un découpage par page fixe.
+            Builder(builder: (context) {
+              final bool paginable = _groupement == _Groupement.aucun;
+              final totalPages = paginable
+                  ? (filtered.length / _itemsPerPage).ceil().clamp(1, 1 << 30)
+                  : 1;
+              if (paginable && _currentPage >= totalPages) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _currentPage = totalPages - 1);
+                });
+              }
+              final pageSure = _currentPage.clamp(0, totalPages - 1);
+              final debut = paginable ? pageSure * _itemsPerPage : 0;
+              final fin = paginable ? (debut + _itemsPerPage).clamp(0, filtered.length) : filtered.length;
+              final pageItems = paginable
+                  ? (filtered.isEmpty ? <Ticket>[] : filtered.sublist(debut, fin))
+                  : filtered;
+
+              return Expanded(
+                child: filtered.isEmpty && !isLoading
+                    ? const Center(child: Text('Aucun ticket trouvé', style: TextStyle(color: AppColors.muted)))
+                    : Column(
+                        children: [
+                          Expanded(
+                            child: RefreshIndicator(
+                              onRefresh: () async => context.read<TicketBloc>().add(LoadTickets()),
+                              child: _groupement == _Groupement.aucun
+                                  ? GridView.builder(
+                                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                      itemCount: pageItems.length,
+                                      // 🎯 Cartes réduites et taille fixe : le nombre de
+                                      // colonnes s'adapte automatiquement à la largeur
+                                      // réelle (2 sur mobile, 4+ sur web/tablette large),
+                                      // sans avoir à recalculer un childAspectRatio.
+                                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                                        maxCrossAxisExtent: 230,
+                                        mainAxisSpacing: 14,
+                                        crossAxisSpacing: 14,
+                                        mainAxisExtent: 252,
+                                      ),
+                                      itemBuilder: (ctx, i) => _ticketTile(ctx, pageItems[i]),
+                                    )
+                                  : _buildGroupedList(context, filtered),
                             ),
-                            itemBuilder: (ctx, i) => _TicketCard(
-                              ticket: filtered[i],
-                              // 🎯 On recharge systématiquement la liste au retour de
-                              // l'écran détail (Navigator.pop), qu'un changement ait
-                              // eu lieu ou non — changement de statut, affectation,
-                              // modification, message, tout ça se passe dans le
-                              // détail sans jamais mettre à jour la liste sous-jacente
-                              // tant qu'on ne revient pas dessus.
-                              onTap: () => Navigator.push(ctx,
-                                MaterialPageRoute(builder: (_) => TicketDetailScreen(ticket: filtered[i])))
-                                  .then((_) {
-                                if (ctx.mounted) ctx.read<TicketBloc>().add(LoadTickets());
-                              }),
+                          ),
+                          if (paginable)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: ModernPagination(
+                                currentPage: pageSure,
+                                totalPages: totalPages,
+                                onPageChanged: (p) => setState(() => _currentPage = p),
+                                resultsLabel: '${debut + 1}–$fin sur ${filtered.length} ticket(s)',
+                              ),
                             ),
-                          );
-                        },
+                        ],
                       ),
-                    ),
-            ),
+              );
+            }),
           ]),
         );
       },
@@ -210,40 +394,12 @@ class _TicketsScreenState extends State<TicketsScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// WIDGET : Chip de filtre
-// ═══════════════════════════════════════════════════════════════════
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  const _FilterChip({required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: 0.5),
-        ),
-        child: Text(label,
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
-              color: selected ? Colors.white : AppColors.muted)),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
 // WIDGET : Carte ticket dans la liste
 // ═══════════════════════════════════════════════════════════════════
-class _TicketCard extends StatelessWidget {
+class TicketCard extends StatelessWidget {
   final Ticket ticket;
   final VoidCallback onTap;
-  const _TicketCard({required this.ticket, required this.onTap});
+  const TicketCard({required this.ticket, required this.onTap});
 
   Color get _couleurPriorite {
     switch (ticket.priority) {
@@ -253,142 +409,161 @@ class _TicketCard extends StatelessWidget {
     }
   }
 
+  // 🎯 Couleur du bouton d'action, alignée sur le statut plutôt que la
+  // priorité — c'est le statut qui indique "où en est" le ticket, ce que le
+  // bouton doit refléter en un coup d'œil (comme "Faire une demande").
+  List<Color> get _degradeStatut {
+    switch (ticket.status) {
+      case TicketStatus.enAttente: return const [Color(0xFFE0642B), Color(0xFFB3401A)];
+      case TicketStatus.enCours: return const [Color(0xFF1E88A8), Color(0xFF0C5F78)];
+      case TicketStatus.resolu: return const [Color(0xFF3FA85C), Color(0xFF1B7A43)];
+      case TicketStatus.ferme: return const [Color(0xFF8A8F98), Color(0xFF5F6169)];
+    }
+  }
+
+  String get _libelleStatut {
+    switch (ticket.status) {
+      case TicketStatus.enAttente: return 'En attente';
+      case TicketStatus.enCours: return 'En cours';
+      case TicketStatus.resolu: return 'Résolu';
+      case TicketStatus.ferme: return 'Fermé';
+    }
+  }
+
+  String get _libellePriorite {
+    switch (ticket.priority) {
+      case TicketPriority.haute: return 'Haute';
+      case TicketPriority.normale: return 'Normale';
+      case TicketPriority.basse: return 'Basse';
+    }
+  }
+
   // 🎯 Petit formatage de date relative "maison" (pas de dépendance intl
   // supplémentaire, le projet ne l'utilise pas ailleurs).
   String get _dateRelative {
     final diff = DateTime.now().difference(ticket.createdAt);
     if (diff.inMinutes < 1) return "À l'instant";
-    if (diff.inHours < 1) return '${diff.inMinutes} min';
-    if (diff.inHours < 24) return '${diff.inHours} h';
+    if (diff.inHours < 1) return 'Il y a ${diff.inMinutes} min';
+    if (diff.inHours < 24) return 'Il y a ${diff.inHours} h';
     if (diff.inDays == 1) return 'Hier';
-    if (diff.inDays < 7) return '${diff.inDays} j';
-    return '${ticket.createdAt.day.toString().padLeft(2, '0')}/${ticket.createdAt.month.toString().padLeft(2, '0')}';
+    if (diff.inDays < 7) return 'Il y a ${diff.inDays} j';
+    return '${ticket.createdAt.day.toString().padLeft(2, '0')}/${ticket.createdAt.month.toString().padLeft(2, '0')}/${ticket.createdAt.year}';
   }
 
-  // 🎯 Au niveau de la structure "DSI", on affiche le vrai logo (asset déjà
-  // utilisé pour l'en-tête des lettres officielles) plutôt qu'une icône
-  // générique de bâtiment, pour un rendu plus institutionnel.
-  bool get _estDsi => ticket.structure.toLowerCase().contains('dsi');
-
+  // 🎯 Carte compacte (réduite par rapport à la version précédente, cf.
+  // retour utilisateur) : petit logo aligné à gauche du n°/priorité au lieu
+  // d'un gros logo centré, texte resserré, un seul bouton de statut pleine
+  // largeur (la flèche est fusionnée dedans — la carte entière reste
+  // cliquable via l'InkWell). Pensée pour tenir dans ~190×198, y compris
+  // sur mobile (2 colonnes) grâce à SliverGridDelegateWithMaxCrossAxisExtent.
   @override
   Widget build(BuildContext context) {
     final couleur = _couleurPriorite;
     final bool nonAffecte = ticket.agentAssigneNom == null;
-    final int nbMessages = ticket.messages.length;
-    final int nbPieces = ticket.attachments.length;
 
     return Container(
       decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE7EBF0)),
-        boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 3))],
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: couleur.withOpacity(0.35), width: 1),
+        boxShadow: const [BoxShadow(color: Color(0x0F000000), blurRadius: 6, offset: Offset(0, 3))],
       ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Bandeau coloré selon la priorité (en tête, format carré) ──
-            Container(height: 4, color: couleur),
-
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                child: Column(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── En-tête : petit logo + n°/structure, priorité à droite ──
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── En-tête : logo/structure + statut ─────────────────
-                    Row(
-                      children: [
-                        _estDsi
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.asset('assets/images/logo.jpg',
-                                    width: 28, height: 28, fit: BoxFit.cover),
-                              )
-                            : Container(
-                                width: 28, height: 28,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: couleur.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(Icons.apartment_outlined, size: 15, color: couleur),
-                              ),
-                        const Spacer(),
-                        StatusBadge.fromTicketStatus(ticket.status),
-                      ],
+                    ClipOval(
+                      child: Image.asset('assets/images/logo.jpg', width: 34, height: 34, fit: BoxFit.cover),
                     ),
-                    const SizedBox(height: 8),
-
-                    // ── N° + description (occupe l'espace disponible) ────
-                    Text('N°${ticket.id}',
-                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: couleur)),
-                    const SizedBox(height: 2),
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        ticket.description,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.25),
-                        maxLines: 3, overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-
-                    // ── Priorité ────────────────────────────────────────
-                    PriorityBadge(priority: ticket.priority),
-                    const SizedBox(height: 6),
-
-                    // ── Agent affecté ─────────────────────────────────────
-                    Row(
-                      children: [
-                        Icon(nonAffecte ? Icons.person_off_outlined : Icons.person_outline,
-                            size: 12, color: nonAffecte ? AppColors.warning : AppColors.muted),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            nonAffecte ? 'Non affecté' : ticket.agentAssigneNom!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: nonAffecte ? FontWeight.w600 : FontWeight.normal,
-                              color: nonAffecte ? AppColors.warning : AppColors.muted,
-                            ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('N°${ticket.id}',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: couleur)),
+                          Text(
+                            ticket.structure.isEmpty ? '—' : ticket.structure,
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Container(height: 1, color: const Color(0xFFF0F2F5)),
-                    const SizedBox(height: 4),
-
-                    // ── Pied : date + compteurs ────────────────────────
-                    Row(
-                      children: [
-                        const Icon(Icons.schedule_outlined, size: 11, color: AppColors.muted),
-                        const SizedBox(width: 3),
-                        Text(_dateRelative, style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
-                        const Spacer(),
-                        if (nbMessages > 0) ...[
-                          const Icon(Icons.chat_bubble_outline, size: 12, color: AppColors.muted),
-                          const SizedBox(width: 2),
-                          Text('$nbMessages', style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
-                          const SizedBox(width: 8),
                         ],
-                        if (nbPieces > 0) ...[
-                          const Icon(Icons.attach_file, size: 12, color: AppColors.muted),
-                          const SizedBox(width: 2),
-                          Text('$nbPieces', style: const TextStyle(fontSize: 10.5, color: AppColors.muted)),
-                        ],
-                      ],
+                      ),
                     ),
+                    Icon(Icons.flag, size: 15, color: couleur),
                   ],
                 ),
-              ),
+                const SizedBox(height: 8),
+
+                // ── Titre (description) ──────────────────────────────────
+                Text(
+                  ticket.description,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, height: 1.25),
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                ),
+
+                const Spacer(),
+
+                // ── Lignes d'info resserrées (icône + libellé) ───────────
+                _ligneInfo(Icons.schedule_outlined, _dateRelative),
+                const SizedBox(height: 5),
+                _ligneInfo(
+                  nonAffecte ? Icons.person_off_outlined : Icons.person_outline,
+                  nonAffecte ? 'Non affecté' : ticket.agentAssigneNom!,
+                  accent: nonAffecte,
+                ),
+
+                const SizedBox(height: 10),
+
+                // ── Bouton de statut (pleine largeur, flèche intégrée) ───
+                Container(
+                  height: 34,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: _degradeStatut),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(_libelleStatut,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                      const Icon(Icons.arrow_forward, color: Colors.white, size: 16),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _ligneInfo(IconData icone, String texte, {bool accent = false}) {
+    final couleurTexte = accent ? AppColors.warning : AppColors.muted;
+    return Row(
+      children: [
+        Icon(icone, size: 13, color: couleurTexte),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(texte,
+              style: TextStyle(fontSize: 11.5, color: couleurTexte, fontWeight: accent ? FontWeight.w600 : FontWeight.normal),
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
     );
   }
 }
@@ -614,6 +789,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     TicketPriority prioriteSelectionnee = TicketPriority.normale;
     List<AppUser> agentsDSI = [];
     bool loading = true;
+    // 🎯 Recherche d'agent par nom, au-dessus de la liste (remplace le
+    // menu déroulant simple, peu pratique dès qu'il y a beaucoup d'agents).
+    final TextEditingController searchCtrl = TextEditingController();
+    String query = '';
 
     // 🎯 On charge directement les AGENT_DSI via getAgentsDSI() au lieu
     // de passer par AdminBloc (qui renverrait tous les utilisateurs).
@@ -638,47 +817,97 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               });
             }
 
+            final agentsFiltres = query.isEmpty
+                ? agentsDSI
+                : agentsDSI.where((u) => '${u.nom} ${u.prenom ?? ''}'.trim().toLowerCase().contains(query)).toList();
+
             return AlertDialog(
               title: const Text("Affecter un agent DSI au ticket"),
-              content: loading
-                  ? const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()))
-                  : agentsDSI.isEmpty
-                      ? const Text("Aucun agent DSI disponible.")
-                      : Column(mainAxisSize: MainAxisSize.min, children: [
-                          DropdownButtonFormField<AppUser>(
-                            decoration: const InputDecoration(
-                              labelText: "Agent DSI",
-                              border: OutlineInputBorder(),
-                            ),
-                            isExpanded: true,
-                            menuMaxHeight: 250,
-                            value: agentSelectionne,
-                            items: agentsDSI
-                                .map((u) => DropdownMenuItem<AppUser>(
-                                      value: u,
-                                      child: Text(
-                                        '${u.nom} ${u.prenom ?? ''}'.trim(),
-                                        overflow: TextOverflow.ellipsis,
+              // 🎯 CORRECTIF mobile : largeur fixe (360) remplacée par une
+              // largeur qui s'adapte à l'écran, pour ne pas déborder sur un
+              // téléphone étroit (ex: 320-360px de large).
+              content: SizedBox(
+                width: math.min(360, MediaQuery.of(context).size.width - 80),
+                child: loading
+                    ? const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()))
+                    : agentsDSI.isEmpty
+                        ? const Text("Aucun agent DSI disponible.")
+                        // 🎯 CORRECTIF overflow : contenu désormais scrollable
+                        // (recherche + liste + priorité ne tenaient plus dans
+                        // la hauteur du dialogue → "BOTTOM OVERFLOWED").
+                        : SingleChildScrollView(
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            // ── Recherche par nom ──────────────────────────
+                            TextField(
+                              controller: searchCtrl,
+                              decoration: InputDecoration(
+                                labelText: 'Agent DSI',
+                                hintText: 'Rechercher un agent par nom...',
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                suffixIcon: query.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.close, size: 18),
+                                        onPressed: () => setDialogState(() { searchCtrl.clear(); query = ''; }),
                                       ),
-                                    ))
-                                .toList(),
-                            onChanged: (val) => setDialogState(() => agentSelectionne = val),
-                          ),
-                          const SizedBox(height: 12),
-                          DropdownButtonFormField<TicketPriority>(
-                            decoration: const InputDecoration(
-                              labelText: "Priorité",
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                                border: const OutlineInputBorder(),
+                              ),
+                              onChanged: (val) => setDialogState(() => query = val.trim().toLowerCase()),
                             ),
-                            isExpanded: true,
-                            value: prioriteSelectionnee,
-                            items: TicketPriority.values
-                                .map((p) => DropdownMenuItem(value: p, child: Text(p.name.toUpperCase())))
-                                .toList(),
-                            onChanged: (val) => setDialogState(() => prioriteSelectionnee = val!),
-                          ),
-                        ]),
+                            const SizedBox(height: 8),
+                            // ── Liste filtrée, sélection par tap ───────────
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 170),
+                              child: agentsFiltres.isEmpty
+                                  ? const Padding(
+                                      padding: EdgeInsets.symmetric(vertical: 12),
+                                      child: Text("Aucun agent ne correspond à cette recherche."),
+                                    )
+                                  : ListView.builder(
+                                      shrinkWrap: true,
+                                      itemCount: agentsFiltres.length,
+                                      itemBuilder: (_, i) {
+                                        final u = agentsFiltres[i];
+                                        final selectionne = agentSelectionne?.id == u.id;
+                                        return ListTile(
+                                          dense: true,
+                                          selected: selectionne,
+                                          selectedTileColor: AppColors.primary.withOpacity(0.08),
+                                          leading: Icon(
+                                            selectionne ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                                            color: selectionne ? AppColors.primary : AppColors.muted,
+                                            size: 20,
+                                          ),
+                                          title: Text(
+                                            '${u.nom} ${u.prenom ?? ''}'.trim(),
+                                            style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A2E)),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          onTap: () => setDialogState(() => agentSelectionne = u),
+                                        );
+                                      },
+                                    ),
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<TicketPriority>(
+                              decoration: const InputDecoration(
+                                labelText: "Priorité",
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                              ),
+                              isExpanded: true,
+                              value: prioriteSelectionnee,
+                              items: TicketPriority.values
+                                  .map((p) => DropdownMenuItem(
+                                      value: p,
+                                      child: Text(p.name.toUpperCase(),
+                                          style: const TextStyle(color: Color(0xFF1A1A2E)))))
+                                  .toList(),
+                              onChanged: (val) => setDialogState(() => prioriteSelectionnee = val!),
+                            ),
+                          ]),
+                        ),
+              ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Annuler")),
                 ElevatedButton(
@@ -768,7 +997,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       final role = authState is AuthOk ? authState.role : '';
                       if (role == 'USAGER') return const SizedBox.shrink();
                       return IconButton(
-                        icon: const Icon(Icons.chat, color: Color.fromARGB(255, 3, 50, 20)),
+                        icon: const _WhatsAppLogo(size: 24),
                         tooltip: 'Contacter sur WhatsApp',
                         onPressed: () => _ouvrirWhatsApp(context, whatsapp),
                       );
@@ -884,27 +1113,37 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                           if (role == 'USAGER') return const SizedBox.shrink();
                           return Column(children: [
                       const SizedBox(height: 10),
-                      InkWell(
-                        onTap: () => _ouvrirWhatsApp(context, whatsapp),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8F5E9),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFF25D366).withOpacity(0.4)),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _ouvrirWhatsApp(context, whatsapp),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF25D366).withOpacity(0.35)),
+                            ),
+                            child: Row(children: [
+                              // ── Logo WhatsApp (bulle + combiné, dessiné maison) ──
+                              const _WhatsAppLogo(size: 36),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(whatsapp, style: const TextStyle(
+                                        fontSize: 13.5, color: Color(0xFF128C7E), fontWeight: FontWeight.w700)),
+                                    const SizedBox(height: 1),
+                                    const Text('Contacter sur WhatsApp',
+                                        style: TextStyle(fontSize: 11, color: Color(0xFF25D366))),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right, size: 20, color: Color(0xFF25D366)),
+                            ]),
                           ),
-                          child: Row(children: [
-                            const Icon(Icons.chat_bubble_outline, size: 16, color: Color(0xFF25D366)),
-                            const SizedBox(width: 8),
-                            Text(whatsapp, style: const TextStyle(
-                                fontSize: 13, color: Color(0xFF128C7E), fontWeight: FontWeight.w500)),
-                            const Spacer(),
-                            const Text('Ouvrir WhatsApp',
-                                style: TextStyle(fontSize: 11, color: Color(0xFF25D366))),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.open_in_new, size: 13, color: Color(0xFF25D366)),
-                          ]),
                         ),
                       ),
                           ]);
@@ -1005,28 +1244,40 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         return Column(children: [
                           // 🎯 Plus d'état "En pause" : un ticket affecté reste
                           // "En cours" jusqu'à sa résolution.
-                          ElevatedButton(
-                            onPressed: () => _demanderSolutionEtResoudre(context, t.id),
-                            style: ElevatedButton.styleFrom(
+                          // Même forme que "Supprimer" ci-dessous (pleine
+                          // largeur, coins arrondis 10px, icône) pour un
+                          // rendu cohérent entre les deux actions.
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _demanderSolutionEtResoudre(context, t.id),
+                              style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.success,
-                                padding: const EdgeInsets.symmetric(vertical: 10)),
-                            child: const Text('Marquer résolu', style: TextStyle(fontSize: 12, color: Colors.white)),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: const Icon(Icons.check_circle_outline, size: 17),
+                              label: const Text('Marquer résolu',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                            ),
                           ),
                           if (peutSupprimer) ...[
                             const SizedBox(height: 8),
-                            // ── Bouton supprimer centré ─────────────────────
-                            Center(
+                            SizedBox(
+                              width: double.infinity,
                               child: OutlinedButton.icon(
                                 onPressed: () => _showDeleteConfirmationDialog(context, t.id),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red, width: 1.0),
-                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 24),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  side: const BorderSide(color: Colors.red, width: 1.2),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                 ),
-                                icon: const Icon(Icons.delete_outline, size: 16),
+                                icon: const Icon(Icons.delete_outline, size: 17),
                                 label: const Text('Supprimer le ticket',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                               ),
                             ),
                           ],
@@ -1072,66 +1323,55 @@ class _AttachmentGallery extends StatelessWidget {
     if (absUrls.isEmpty) return const SizedBox.shrink();
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (images.isNotEmpty)
-        SizedBox(
-          height: images.length == 1 ? 180 : 120,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: images.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (ctx, i) => GestureDetector(
-              onTap: () => _ouvrirApercu(ctx, images, i),
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.network(
-                      images[i],
-                      width: images.length == 1 ? 280 : 120,
-                      height: images.length == 1 ? 180 : 120,
-                      fit: BoxFit.cover,
-                      headers: const {'Cache-Control': 'no-cache'},
-                      loadingBuilder: (ctx, child, progress) => progress == null
-                          ? child
-                          : Container(
-                              width: images.length == 1 ? 280 : 120,
-                              height: images.length == 1 ? 180 : 120,
-                              color: AppColors.surface,
-                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                            ),
-                      errorBuilder: (_, error, __) => Container(
-                        width: images.length == 1 ? 280 : 120,
-                        height: images.length == 1 ? 180 : 120,
-                        decoration: BoxDecoration(
+      // 🎯 Carrousel auto-défilant seulement à partir de 2 images — pour une
+      // seule image, pas besoin de défilement, l'aperçu statique suffit.
+      if (images.length > 1)
+        _ImageCarousel(images: images, onTapImage: (i) => _ouvrirApercu(context, images, i))
+      else if (images.length == 1)
+        GestureDetector(
+          onTap: () => _ouvrirApercu(context, images, 0),
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  images[0],
+                  width: 280, height: 180,
+                  fit: BoxFit.cover,
+                  headers: const {'Cache-Control': 'no-cache'},
+                  loadingBuilder: (ctx, child, progress) => progress == null
+                      ? child
+                      : Container(
+                          width: 280, height: 180,
                           color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.border),
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                         ),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          const Icon(Icons.image_not_supported_outlined, color: AppColors.muted, size: 28),
-                          const SizedBox(height: 4),
-                          Text(images[i].split('/').last,
-                              style: const TextStyle(fontSize: 10, color: AppColors.muted),
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ]),
-                      ),
+                  errorBuilder: (_, error, __) => Container(
+                    width: 280, height: 180,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border),
                     ),
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      const Icon(Icons.image_not_supported_outlined, color: AppColors.muted, size: 28),
+                      const SizedBox(height: 4),
+                      Text(images[0].split('/').last,
+                          style: const TextStyle(fontSize: 10, color: AppColors.muted),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ]),
                   ),
-                  // Indicateur zoom
-                  Positioned(
-                    bottom: 4, right: 4,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(Icons.zoom_in, size: 14, color: Colors.white),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              Positioned(
+                bottom: 4, right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(4)),
+                  child: const Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                ),
+              ),
+            ],
           ),
         ),
       if (others.isNotEmpty) const SizedBox(height: 8),
@@ -1144,6 +1384,229 @@ class _AttachmentGallery extends StatelessWidget {
       builder: (_) => _ImagePreviewScreen(images: images, initialIndex: index),
     ));
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Carrousel horizontal des images jointes, avec défilement automatique et un
+// bouton pause/lecture pour l'arrêter et prendre le temps de regarder — le tap
+// sur une image l'arrête aussi automatiquement et ouvre l'aperçu plein écran.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ImageCarousel extends StatefulWidget {
+  final List<String> images;
+  final void Function(int index) onTapImage;
+  const _ImageCarousel({required this.images, required this.onTapImage});
+
+  @override
+  State<_ImageCarousel> createState() => _ImageCarouselState();
+}
+
+class _ImageCarouselState extends State<_ImageCarousel> {
+  static const double _hauteur = 170;
+  late final PageController _pageCtrl;
+  Timer? _timer;
+  bool _enLecture = true;
+  int _pageActuelle = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageCtrl = PageController();
+    _demarrerDefilement();
+  }
+
+  // 🎯 PageView.animateToPage() bascule TOUJOURS d'une image à l'autre,
+  // contrairement à un ScrollController horizontal dont le déplacement
+  // dépendait de la largeur totale à faire défiler — avec seulement 2 ou 3
+  // images tenant déjà dans la largeur visible, il n'y avait "rien à faire
+  // défiler" et le minuteur tournait dans le vide (bug précédent).
+  void _demarrerDefilement() {
+    _timer?.cancel();
+    if (widget.images.length < 2) return; // rien à faire défiler avec une seule image
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || !_pageCtrl.hasClients) return;
+      final suivante = (_pageActuelle + 1) % widget.images.length;
+      _pageCtrl.animateToPage(suivante,
+          duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
+    });
+  }
+
+  // 🎯 Arrêt explicite (bouton) — celui demandé pour "stopper et voir".
+  void _basculerLecture() {
+    setState(() => _enLecture = !_enLecture);
+    if (_enLecture) {
+      _demarrerDefilement();
+    } else {
+      _timer?.cancel();
+    }
+  }
+
+  void _onTapImage(int i) {
+    // 🎯 Ouvrir une image met aussi le carrousel en pause : à son retour de
+    // l'aperçu plein écran, l'utilisateur le retrouve arrêté sur place,
+    // plutôt que de le voir repartir tout seul pendant qu'il regardait.
+    _timer?.cancel();
+    if (_enLecture) setState(() => _enLecture = false);
+    widget.onTapImage(i);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final images = widget.images;
+    return SizedBox(
+      // 🎯 Largeur fixe (comme l'affichage à une seule image) : sans ça, le
+      // PageView s'étirait sur toute la largeur de l'écran, ce qui forçait
+      // un zoom énorme sur des images à la hauteur fixe de 170px.
+      width: 280,
+      child: Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            height: _hauteur,
+            child: PageView.builder(
+              controller: _pageCtrl,
+              itemCount: images.length,
+              onPageChanged: (i) => setState(() => _pageActuelle = i),
+              itemBuilder: (ctx, i) => GestureDetector(
+                onTap: () => _onTapImage(i),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      images[i],
+                      fit: BoxFit.cover,
+                      headers: const {'Cache-Control': 'no-cache'},
+                      loadingBuilder: (ctx, child, progress) => progress == null
+                          ? child
+                          : Container(
+                              color: AppColors.surface,
+                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
+                      errorBuilder: (_, error, __) => Container(
+                        color: AppColors.surface,
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(Icons.image_not_supported_outlined, color: AppColors.muted, size: 28),
+                          const SizedBox(height: 4),
+                          Text(images[i].split('/').last,
+                              style: const TextStyle(fontSize: 10, color: AppColors.muted),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ]),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 6, right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(4)),
+                        child: const Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // ── Bouton pause / lecture ──────────────────────────────────────
+        if (images.length > 1)
+          Positioned(
+            top: 8, right: 8,
+            child: GestureDetector(
+              onTap: _basculerLecture,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                child: Icon(_enLecture ? Icons.pause : Icons.play_arrow, size: 16, color: Colors.white),
+              ),
+            ),
+          ),
+
+        // ── Indicateurs (points) ──────────────────────────────────────────
+        if (images.length > 1)
+          Positioned(
+            bottom: 8, left: 0, right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(images.length, (i) => Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                width: i == _pageActuelle ? 16 : 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: i == _pageActuelle ? Colors.white : Colors.white.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              )),
+            ),
+          ),
+      ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Logo WhatsApp "maison" — bulle verte + tail + combiné téléphonique blanc,
+// dessiné au Canvas plutôt que via un package tiers (font_awesome_flutter a
+// cassé la compilation avec certaines versions du SDK Flutter : IconData est
+// désormais une classe "final" que ce package tentait d'étendre). Zéro
+// dépendance = zéro risque de ce genre de casse.
+// ─────────────────────────────────────────────────────────────────────────────
+class _WhatsAppLogo extends StatelessWidget {
+  final double size;
+  const _WhatsAppLogo({this.size = 20});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(size: Size(size, size), painter: _WhatsAppPainter());
+  }
+}
+
+class _WhatsAppPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paintBulle = Paint()..color = const Color(0xFF25D366);
+    final r = size.width / 2;
+
+    // Bulle principale
+    canvas.drawCircle(Offset(r, r), r, paintBulle);
+
+    // Petite pointe de bulle de discussion (bas-gauche)
+    final tail = Path()
+      ..moveTo(size.width * 0.20, size.height * 0.80)
+      ..lineTo(size.width * 0.03, size.height * 0.98)
+      ..lineTo(size.width * 0.32, size.height * 0.86)
+      ..close();
+    canvas.drawPath(tail, paintBulle);
+
+    // Combiné téléphonique blanc, centré (réutilise la glyphe Icons.phone
+    // du thème Material, toujours disponible — pas un package tiers).
+    final textPainter = TextPainter(textDirection: TextDirection.ltr)
+      ..text = TextSpan(
+        text: String.fromCharCode(Icons.phone.codePoint),
+        style: TextStyle(
+          fontSize: size.width * 0.52,
+          fontFamily: Icons.phone.fontFamily,
+          package: Icons.phone.fontPackage,
+          color: Colors.white,
+        ),
+      )
+      ..layout();
+    textPainter.paint(
+      canvas,
+      Offset(r - textPainter.width / 2, r - textPainter.height / 2 - size.height * 0.03),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _FileTile extends StatelessWidget {
@@ -1526,6 +1989,20 @@ class _CreateTicketSheetState extends State<_CreateTicketSheet> {
           whatsapp: _whatsappCtrl.text.trim().isEmpty ? null : _whatsappCtrl.text.trim(),
         ),
       );
+      // 🎯 Si la structure/service n'étaient pas déjà sur le profil (compte
+      // créé avant le correctif de l'inscription, par ex.) et que
+      // l'utilisateur vient de les choisir ici lui-même, on les enregistre
+      // sur son profil — comme ça, la prochaine fois, tout se préremplit
+      // automatiquement (même logique que le numéro de téléphone).
+      if (_structureNomUtilisateur == null && _structureSelectionnee?.id != null) {
+        sl<AuthService>().mettreAJourMonProfil(
+          structureId: _structureSelectionnee!.id,
+          serviceId: _serviceSelectionne?.id,
+        ).catchError((_) {
+          // Non bloquant : si ça échoue, le ticket est quand même créé,
+          // l'utilisateur choisira simplement de nouveau la prochaine fois.
+        });
+      }
       Navigator.pop(context);
     }
   }

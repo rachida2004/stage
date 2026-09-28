@@ -128,7 +128,9 @@ public class WordService {
             XWPFParagraph dateP = celluleDroite.addParagraph();
             dateP.setAlignment(ParagraphAlignment.RIGHT);
             dateP.setSpacingAfter(140);
-            dateP.createRun().setText(ville + ", le " + java.time.LocalDate.now().format(FMT));
+            // 🎯 Même logique que le PDF : la date n'est pas auto-remplie,
+            // elle est écrite à la main à la signature du courrier imprimé.
+            dateP.createRun().setText(ville + ", le ....................");
 
             XWPFParagraph qualiteP = celluleDroite.addParagraph();
             qualiteP.setAlignment(ParagraphAlignment.RIGHT);

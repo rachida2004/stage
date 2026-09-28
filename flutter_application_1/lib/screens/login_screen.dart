@@ -15,12 +15,10 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passCtrl  = TextEditingController();
-  final _confirmPassCtrl = TextEditingController();
   bool _obscure = true;
-  bool _obscureConfirm = true;
 
   @override
-  void dispose() { _emailCtrl.dispose(); _passCtrl.dispose(); _confirmPassCtrl.dispose(); super.dispose(); }
+  void dispose() { _emailCtrl.dispose(); _passCtrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -103,20 +101,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 14),
-                            TextFormField(
-                              controller: _confirmPassCtrl,
-                              obscureText: _obscureConfirm,
-                              decoration: InputDecoration(
-                                labelText: 'Confirmer le mot de passe',
-                                hintText: '••••••••',
-                                prefixIcon: const Icon(Icons.lock_outline, size: 18),
-                                suffixIcon: IconButton(
-                                  icon: Icon(_obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
-                                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                                ),
-                              ),
-                            ),
                             const SizedBox(height: 10),
                             Align(
                               alignment: Alignment.centerRight,
@@ -134,12 +118,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 20),
                             ElevatedButton(
                               onPressed: loading ? null : () {
-                                if (_passCtrl.text != _confirmPassCtrl.text) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Les mots de passe ne correspondent pas'),
-                                        backgroundColor: AppColors.danger));
-                                  return;
-                                }
                                 context.read<AuthBloc>().add(
                                   LoginSubmitted(_emailCtrl.text.trim(), _passCtrl.text.trim()));
                               },

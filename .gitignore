@@ -15,4 +15,7 @@ backend/dsi/uploads/
 *.ntvs*
 *.njsproj
 *.sln
-*.swp
+*.swphs_err_pid*.log
+replay_pid*.log
+hs_err_pid*.log
+replay_pid*.log

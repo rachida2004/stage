@@ -60,6 +60,11 @@ class _EditInvitationPageState extends State<EditInvitationPage> {
       initialDate: isDebut ? _dateDebut : _dateFin,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
+      // 🎯 Force le thème clair de l'appli pour ce sélecteur, quel que soit
+      // le mode sombre du système : sans ça, le calendrier hérite du thème
+      // sombre (ThemeMode.system) alors que tout le reste de l'appli est
+      // codé en dur en clair → texte peu lisible (ex: boutons Annuler/OK).
+      builder: (ctx, child) => Theme(data: AppTheme.lightTheme, child: child!),
     );
     if (picked != null) {
       setState(() {

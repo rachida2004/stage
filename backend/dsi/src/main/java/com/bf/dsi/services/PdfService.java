@@ -98,7 +98,12 @@ public class PdfService {
             pBurkina.setSpacingAfter(10f);
             celluleDroite.addElement(pBurkina);
 
-            Paragraph pDate = new Paragraph(ville + ", le " + java.time.LocalDate.now().format(FMT), NORMAL);
+            // 🎯 La date n'est PAS auto-remplie : elle est écrite à la main lors
+            // de la signature du courrier imprimé, comme le numéro de référence
+            // ci-dessus. On laisse un espace en pointillés plutôt que la date
+            // du jour de génération du PDF (qui n'a souvent aucun rapport avec
+            // la date réelle de signature).
+            Paragraph pDate = new Paragraph(ville + ", le ....................", NORMAL);
             pDate.setAlignment(Element.ALIGN_RIGHT);
             pDate.setSpacingAfter(10f);
             celluleDroite.addElement(pDate);

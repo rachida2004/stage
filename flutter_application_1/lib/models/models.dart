@@ -189,6 +189,10 @@ class Invitation {
   final String? signataireNom;
   final String? signataireQualite;
   final String? modeCreation;
+  // 🎯 Horodatage d'enregistrement de l'invitation (renvoyé par le backend
+  // via "dateCreation") — sert de base au filtre par année/date/jour/mois
+  // sur l'écran des invitations. Nullable par sécurité (anciennes données).
+  final DateTime? dateCreation;
   final List<StructureInviteeRef> structuresInvitees;
 
   Invitation({
@@ -211,6 +215,7 @@ class Invitation {
     this.signataireNom,
     this.signataireQualite,
     this.modeCreation,
+    this.dateCreation,
     this.structuresInvitees = const [],
   });
 
@@ -249,6 +254,7 @@ class Invitation {
     signataireNom:      j['signataireNom'],
     signataireQualite:  j['signataireQualite'],
     modeCreation:       j['modeCreation'],
+    dateCreation:       j['dateCreation'] != null ? DateTime.tryParse(j['dateCreation'].toString()) : null,
     structuresInvitees: (j['structuresInvitees'] as List<dynamic>? ?? [])
         .map((e) => StructureInviteeRef.fromJson(e)).toList(),
   );

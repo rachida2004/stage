@@ -2,6 +2,7 @@ package com.bf.dsi.controller;
 
 import com.bf.dsi.dto.TicketRequest;
 import com.bf.dsi.dto.MessageRequest;
+import com.bf.dsi.dto.NotificationEvent;
 import com.bf.dsi.entity.*;
 import com.bf.dsi.enums.*;
 import com.bf.dsi.repository.*;
@@ -9,6 +10,7 @@ import com.bf.dsi.services.FileStorageService;
 import com.bf.dsi.services.TicketService;
 import com.bf.dsi.services.AppSettingService; // 🎯 1. Importation de ton nouveau service de configuration
 import com.bf.dsi.services.EmailService;
+import com.bf.dsi.services.NotificationBroadcastService;
 import com.bf.dsi.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
@@ -27,7 +29,7 @@ public class TicketController {
     private final UtilisateurRepository utilisateurRepo;
     private final StructureRepository structureRepo;
     private final CommunicationRepository communicationRepo;
-    private final NotificationRepository notificationRepo;
+    private final NotificationBroadcastService notifBroadcast;
     private final FileStorageService fileStorage;
     private final TicketService ticketService;
     private final AppSettingService appSettingService; // 🎯 2. Injection automatique via @RequiredArgsConstructor
@@ -275,10 +277,10 @@ public class TicketController {
                 String message = "Votre ticket #" + id + " " + libelleStatut + ".";
 
                 if (appSettingService.isInternalNotificationEnabled()) {
-                    notificationRepo.save(Notification.builder()
+                    notifBroadcast.envoyer(saved.getCreateur().getUserId(), NotificationEvent.builder()
                         .message(message)
                         .categorie("TICKET").actionLabel("Voir").resourceId(id.toString())
-                        .utilisateur(saved.getCreateur()).build());
+                        .build());
                 }
 
                 if (appSettingService.isEmailNotificationEnabled() && saved.getCreateur().getEmail() != null) {
@@ -332,10 +334,10 @@ public class TicketController {
         
         // 🎯 4. Condition sur l'option "Notifications internes" lors de l'affectation
         if (appSettingService.isInternalNotificationEnabled()) {
-            notificationRepo.save(Notification.builder()
+            notifBroadcast.envoyer(agent.getUserId(), NotificationEvent.builder()
                 .message("Vous avez été affecté au ticket #" + ticketId)
                 .categorie("TICKET").actionLabel("Voir").resourceId(ticketId.toString())
-                .utilisateur(agent).build());
+                .build());
         }
 
         if (appSettingService.isEmailNotificationEnabled() && agent.getEmail() != null) {
@@ -351,10 +353,10 @@ public class TicketController {
         Utilisateur createur = ticket.getCreateur();
         if (createur != null && !createur.getUserId().equals(agent.getUserId())) {
             if (appSettingService.isInternalNotificationEnabled()) {
-                notificationRepo.save(Notification.builder()
+                notifBroadcast.envoyer(createur.getUserId(), NotificationEvent.builder()
                     .message("Votre ticket #" + ticketId + " a été affecté à un agent")
                     .categorie("TICKET").actionLabel("Voir").resourceId(ticketId.toString())
-                    .utilisateur(createur).build());
+                    .build());
             }
             if (appSettingService.isEmailNotificationEnabled() && createur.getEmail() != null) {
                 emailService.envoyerNotification(
@@ -393,10 +395,10 @@ public class TicketController {
         // 🎯 5. Condition sur l'option "Notifications internes" pour les nouveaux messages du chat
         if (dest != null && !dest.getUserId().equals(auteurId)) {
             if (appSettingService.isInternalNotificationEnabled()) {
-                notificationRepo.save(Notification.builder()
+                notifBroadcast.envoyer(dest.getUserId(), NotificationEvent.builder()
                     .message("Nouveau message sur le ticket #" + ticketId)
                     .categorie("TICKET").actionLabel("Voir").resourceId(ticketId.toString())
-                    .utilisateur(dest).build());
+                    .build());
             }
             if (appSettingService.isEmailNotificationEnabled() && dest.getEmail() != null) {
                 emailService.envoyerNotification(
@@ -441,10 +443,8 @@ public class TicketController {
                     .body(Map.of("message", "Vous n'avez pas le droit de supprimer ce ticket."));
         }
 
-        // 🎯 On purge d'abord les notifications liées à ce ticket (catégorie
-        // "TICKET", resourceId = id du ticket), sinon elles restent "fantômes"
-        // en base et pointent vers une ressource qui n'existe plus.
-        notificationRepo.deleteByCategorieAndResourceId("TICKET", id.toString());
+        // 🎯 Plus de purge de notifications ici : elles ne sont plus stockées
+        // (poussées en direct via SSE), donc rien à nettoyer en base.
         ticketRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Ticket supprimé"));
     }
@@ -472,10 +472,10 @@ public class TicketController {
         String resume = (desc != null && desc.length() > 60) ? desc.substring(0, 60) + "…" : desc;
 
         if (interneOn) {
-            destinatairesInterne.values().forEach(u -> notificationRepo.save(Notification.builder()
+            destinatairesInterne.values().forEach(u -> notifBroadcast.envoyer(u.getUserId(), NotificationEvent.builder()
                 .message("🆕 Nouveau ticket créé : " + resume)
                 .categorie("TICKET").actionLabel("Voir").resourceId(ticket.getId().toString())
-                .utilisateur(u).build()));
+                .build()));
         }
 
         if (emailOn) {

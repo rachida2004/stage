@@ -14,6 +14,7 @@ import '../widget/shared_widget.dart';
 import '../core/api_constants.dart';
 import 'package:flutter_application_1/screens/pdf_viewer_page.dart';
 import 'package:flutter_application_1/screens/screen/invitation_screen.dart';
+import 'package:flutter_application_1/screens/archivage_invitations_screen.dart';
 
 // Fonction utilitaire pour gérer l'ouverture des pièces jointes et des exports
 Future<void> ouvrirPieceJointe(String urlOrPath) async {
@@ -124,6 +125,21 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   InvitationStatus? _filterStatus;
   _InvTab _currentTab = _InvTab.recues;
 
+  // 🎯 Filtres par date d'enregistrement (dateCreation) : soit une année
+  // entière (chips, comme sur l'écran Archivage), soit une date exacte
+  // (jour + mois + année) choisie via le sélecteur de date — les deux sont
+  // mutuellement exclusifs, la date exacte étant la plus précise.
+  String? _filterAnnee;
+  DateTime? _filterDate;
+  static final List<String> _annees = List.generate(
+      6, (i) => (DateTime.now().year - i).toString());
+
+  // 🎯 Pagination côté client : la liste est déjà entièrement chargée puis
+  // filtrée en mémoire (pas d'appel API paginé côté backend), donc on
+  // découpe simplement la liste déjà filtrée par pages de 10.
+  int _currentPage = 0;
+  static const int _itemsPerPage = 10;
+
   @override
   void initState() {
     super.initState();
@@ -154,9 +170,49 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       final matchSearch = inv.objet.toLowerCase().contains(_search.toLowerCase()) ||
           inv.structureEmettrice.toLowerCase().contains(_search.toLowerCase());
       final matchStatus = _filterStatus == null || inv.status == _filterStatus;
-      return matchSearch && matchStatus;
+
+      // 🎯 Filtre par date d'enregistrement : date exacte prioritaire sur
+      // le filtre "année seule". Sans dateCreation (anciennes données), une
+      // invitation ne matche aucun des deux filtres de date.
+      bool matchDate = true;
+      final dc = inv.dateCreation;
+      if (_filterDate != null) {
+        matchDate = dc != null &&
+            dc.year == _filterDate!.year &&
+            dc.month == _filterDate!.month &&
+            dc.day == _filterDate!.day;
+      } else if (_filterAnnee != null) {
+        matchDate = dc != null && dc.year.toString() == _filterAnnee;
+      }
+
+      return matchSearch && matchStatus && matchDate;
     }).toList();
   }
+
+  Future<void> _choisirDateEnregistrement() async {
+    final DateTime? choisie = await showDatePicker(
+      context: context,
+      initialDate: _filterDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      helpText: "Filtrer par date d'enregistrement",
+      cancelText: 'Annuler',
+      confirmText: 'Filtrer',
+      // 🎯 Force le thème clair de l'appli, indépendamment du mode sombre du
+      // système — sinon le calendrier passe en thème sombre (peu lisible,
+      // ex: boutons Annuler/Filtrer en vert peu contrasté sur fond sombre).
+      builder: (ctx, child) => Theme(data: AppTheme.lightTheme, child: child!),
+    );
+    if (choisie == null) return;
+    setState(() {
+      _filterDate = choisie;
+      _filterAnnee = null; // 🎯 la date exacte remplace le filtre année seule
+      _currentPage = 0;
+    });
+  }
+
+  String _fmtDateCourte(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +304,7 @@ floatingActionButton: BlocBuilder<AuthBloc, AuthState>(
                   children: [
                     AppSearchBar(
                       hint: 'Rechercher par objet, structure...',
-                      onChanged: (v) => setState(() => _search = v),
+                      onChanged: (v) => setState(() { _search = v; _currentPage = 0; }),
                     ),
                     
                     const SizedBox(height: 10),
@@ -266,7 +322,7 @@ floatingActionButton: BlocBuilder<AuthBloc, AuthState>(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: () {
-          setState(() => _currentTab = _InvTab.envoyees);
+          setState(() { _currentTab = _InvTab.envoyees; _currentPage = 0; });
           context.read<InvitationBloc>().add(LoadInvitationsEnvoyees());
         },
         icon: const Icon(Icons.send_rounded, size: 18),
@@ -288,64 +344,153 @@ floatingActionButton: BlocBuilder<AuthBloc, AuthState>(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: () {
-          setState(() => _currentTab = _InvTab.recues);
+          setState(() { _currentTab = _InvTab.recues; _currentPage = 0; });
           context.read<InvitationBloc>().add(LoadInvitationsRecues());
         },
         icon: const Icon(Icons.download_rounded, size: 18),
         label: const Text('ENVOYER', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
       ),
     ),
+
+    const SizedBox(width: 12),
+
+    // ── BOUTON 3 : ARCHIVAGE (lettres officielles imprimées/signées) ───
+    // 🎯 Écran séparé (pas un 3e état de _InvTab) : il a sa propre logique
+    // de recherche par numéro/année, indépendante du InvitationBloc et de
+    // sa liste "Reçu/Envoyer" — évite de reproduire le bug déjà rencontré
+    // où un état partagé entre écrans finit par vider l'un des deux.
+    Expanded(
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color.fromARGB(255, 10, 78, 25),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        onPressed: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const ArchivageInvitationsScreen())),
+        icon: const Icon(Icons.archive_outlined, size: 18),
+        label: const Text('ARCHIVAGE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+      ),
+    ),
   ],
 ),
                     const SizedBox(height: 10),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _FilterChip(
-                            label: 'Toutes',
-                            selected: _filterStatus == null,
-                            onTap: () => setState(() => _filterStatus = null),
+                    // ── Filtres : statut + année, en menus déroulants ──
+                    // 🎯 Remplace les rangées de chips (qui prenaient trop de
+                    // place horizontalement) par des dropdowns compacts.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<InvitationStatus?>(
+                            value: _filterStatus,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              prefixIcon: const Icon(Icons.filter_list, size: 18),
+                            ),
+                            items: [
+                              const DropdownMenuItem<InvitationStatus?>(value: null, child: Text('Tous les statuts')),
+                              // 🎯 Les statuts détaillés ne s'appliquent que sur l'onglet "Envoyer"
+                              if (_currentTab == _InvTab.envoyees)
+                                ...InvitationStatus.values.map((s) =>
+                                    DropdownMenuItem<InvitationStatus?>(value: s, child: Text(s.label))),
+                            ],
+                            onChanged: (val) => setState(() { _filterStatus = val; _currentPage = 0; }),
                           ),
-                          // 🎯 Les filtres de statut détaillés ne s'affichent que sur l'onglet "Envoyer"
-                          if (_currentTab == _InvTab.envoyees)
-                            ...InvitationStatus.values.map((s) => Padding(
-                                  padding: const EdgeInsets.only(left: 6),
-                                  child: _FilterChip(
-                                    label: s.label,
-                                    selected: _filterStatus == s,
-                                    onTap: () => setState(() =>
-                                        _filterStatus = _filterStatus == s ? null : s),
-                                  ),
-                                )),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButtonFormField<String?>(
+                            value: _filterDate != null ? '__date_precise__' : _filterAnnee,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              prefixIcon: const Icon(Icons.event_outlined, size: 18),
+                            ),
+                            items: [
+                              const DropdownMenuItem<String?>(value: null, child: Text('Toutes années')),
+                              // 🎯 _annees est recalculée à chaque démarrage à partir de
+                              // DateTime.now().year (voir plus bas) : les années futures
+                              // apparaissent donc automatiquement, sans modification de code.
+                              ..._annees.map((a) => DropdownMenuItem<String?>(value: a, child: Text(a))),
+                              DropdownMenuItem<String?>(
+                                value: '__date_precise__',
+                                child: Text(_filterDate != null ? _fmtDateCourte(_filterDate!) : 'Date précise...'),
+                              ),
+                            ],
+                            onChanged: (val) {
+                              if (val == '__date_precise__') {
+                                _choisirDateEnregistrement();
+                              } else {
+                                setState(() { _filterAnnee = val; _filterDate = null; _currentPage = 0; });
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 10),
-              Expanded(
-                child: filtered.isEmpty && !loading
-                    ? const Center(
-                        child: Text(
-                          'Aucune invitation trouvée',
-                          style: TextStyle(color: AppColors.muted),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () async => _chargerOngletActuel(),
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (ctx, i) => _InvitationCard(
-                            inv: filtered[i],
-                            onTap: () => _openDetail(context, filtered[i]),
+              // 🎯 Pagination : on découpe la liste déjà filtrée par pages de
+              // 10, et on recale la page courante si elle devient hors
+              // limites (ex: un filtre réduit soudain le nombre de résultats).
+              Builder(builder: (context) {
+                final totalPages = (filtered.length / _itemsPerPage).ceil().clamp(1, 1 << 30);
+                if (_currentPage >= totalPages) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _currentPage = totalPages - 1);
+                  });
+                }
+                final pageSure = _currentPage.clamp(0, totalPages - 1);
+                final debut = pageSure * _itemsPerPage;
+                final fin = (debut + _itemsPerPage).clamp(0, filtered.length);
+                final paginated = filtered.isEmpty ? <Invitation>[] : filtered.sublist(debut, fin);
+
+                return Expanded(
+                  child: filtered.isEmpty && !loading
+                      ? const Center(
+                          child: Text(
+                            'Aucune invitation trouvée',
+                            style: TextStyle(color: AppColors.muted),
                           ),
+                        )
+                      : Column(
+                          children: [
+                            Expanded(
+                              child: RefreshIndicator(
+                                onRefresh: () async => _chargerOngletActuel(),
+                                child: ListView.separated(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  itemCount: paginated.length,
+                                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                  itemBuilder: (ctx, i) => _InvitationCard(
+                                    inv: paginated[i],
+                                    onTap: () => _openDetail(context, paginated[i]),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: ModernPagination(
+                                currentPage: pageSure,
+                                totalPages: totalPages,
+                                onPageChanged: (p) => setState(() => _currentPage = p),
+                                resultsLabel:
+                                    '${debut + 1}–$fin sur ${filtered.length} invitation(s)',
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-              ),
+                );
+              }),
             ],
           ),
         );
@@ -536,6 +681,7 @@ class _AddInvitationSheetState extends State<_AddInvitationSheet> {
       initialDate: DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
+      builder: (ctx, child) => Theme(data: AppTheme.lightTheme, child: child!),
     );
     if (d != null) {
       setState(() {
@@ -1715,6 +1861,9 @@ class _AffectationModalState extends State<_AffectationModal> {
   List<AppUser> _agents = [];
   bool _loading = true;
   String? _error;
+  // 🎯 Recherche d'agent par nom/prénom au-dessus de la liste à cocher.
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
@@ -1722,6 +1871,21 @@ class _AffectationModalState extends State<_AffectationModal> {
     _selectedIds = List.from(widget.initialSelectedIds);
     _responsableId = widget.initialResponsableId;
     _loadAgents();
+    _searchCtrl.addListener(() => setState(() => _query = _searchCtrl.text.trim().toLowerCase()));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<AppUser> get _agentsFiltres {
+    if (_query.isEmpty) return _agents;
+    return _agents.where((a) {
+      final nomComplet = '${a.nom} ${a.prenom ?? ''}'.trim().toLowerCase();
+      return nomComplet.contains(_query);
+    }).toList();
   }
 
   Future<void> _loadAgents() async {
@@ -1796,18 +1960,43 @@ class _AffectationModalState extends State<_AffectationModal> {
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(child: Text('Aucun agent disponible')),
             )
-          else
-            WidgetAgentsList(
-              agents: _agents,
-              selectedIds: _selectedIds,
-              responsableId: _responsableId,
-              onChanged: (selected, resp) {
-                setState(() {
-                  _selectedIds = selected;
-                  _responsableId = resp;
-                });
-              },
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 8),
+              child: TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Rechercher un agent par nom...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => _searchCtrl.clear(),
+                        ),
+                  isDense: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
             ),
+            if (_agentsFiltres.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: Text('Aucun agent ne correspond à cette recherche')),
+              )
+            else
+              WidgetAgentsList(
+                agents: _agentsFiltres,
+                selectedIds: _selectedIds,
+                responsableId: _responsableId,
+                onChanged: (selected, resp) {
+                  setState(() {
+                    _selectedIds = selected;
+                    _responsableId = resp;
+                  });
+                },
+              ),
+          ],
           const SizedBox(height: 16),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
@@ -1863,26 +2052,61 @@ class WidgetAgentsList extends StatelessWidget {
               CheckboxListTile(
                 dense: true,
                 activeColor: const Color.fromARGB(255, 3, 58, 26),
-                title: Text(
-                  '${agent.nom} ${agent.prenom ?? ''}'.trim(),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF1E293B),
-                  ),
+                // 🎯 CORRECTIF lisibilité : la ligne du responsable est
+                // maintenant surlignée, avec une étiquette explicite en plus
+                // de l'interrupteur — avant, les deux états (activé/désactivé)
+                // de l'interrupteur se ressemblaient trop pour être distingués
+                // au premier coup d'œil.
+                tileColor: isResponsable ? const Color(0xFFEFFCF3) : null,
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${agent.nom} ${agent.prenom ?? ''}'.trim(),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    ),
+                    if (isResponsable)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2ECC71),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.star, size: 12, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text('Responsable', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
                 subtitle: isSelected
                     ? Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            'Responsable', 
-                            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                          Text(
+                            isResponsable ? 'Est le responsable' : 'Définir comme responsable',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isResponsable ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                              fontWeight: isResponsable ? FontWeight.w600 : FontWeight.normal,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Switch(
                             value: isResponsable,
                             activeColor: const Color(0xFF2ECC71),
+                            activeTrackColor: const Color(0xFFBEF2CF),
+                            inactiveThumbColor: const Color(0xFF94A3B8),
+                            inactiveTrackColor: const Color(0xFFE2E8F0),
                             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             onChanged: (val) {
                               onChanged(selectedIds, val ? agentId : null);

@@ -107,11 +107,12 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 🎯 Couleur alignée sur les cartes du tableau de bord ("Invitations
+    // traitées") pour rester cohérent visuellement dans toute l'appli.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: isDark ? const Color.fromARGB(255, 23, 23, 23) : const Color.fromARGB(255, 245, 245, 255),
+        color: const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -119,19 +120,19 @@ class StatCard extends StatelessWidget {
         children: [
        Text(
   value,
-  style: TextStyle(
+  style: const TextStyle(
     fontSize: 24,
     fontWeight: FontWeight.w600,
-    color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+    color: Color(0xFF15803D),
   ),
 ),
           const SizedBox(height: 2),
-          Text(label, style: TextStyle(
+          Text(label, style: const TextStyle(
               fontSize: 12,
-              color: isDark ? const Color.fromARGB(255, 238, 239, 244) : AppColors.muted)),
+              color: AppColors.muted)),
           if (delta != null) ...[
             const SizedBox(height: 4),
-            Text(delta!, style: TextStyle(fontSize: 11, color: deltaPositive ? AppColors.success : AppColors.danger)),
+            Text(delta!, style: TextStyle(fontSize: 11, color: deltaPositive ? const Color.fromARGB(255, 9, 80, 35) : AppColors.danger)),
           ],
         ],
       ),
@@ -192,11 +193,12 @@ class AppSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 🎯 Même correctif que StatCard : plus de dépendance à
+    // Theme.of(context).brightness, une seule apparence cohérente.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? const Color.fromARGB(255, 235, 239, 236) : AppColors.surface,//reche
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color.fromARGB(255, 3, 61, 17), width: 0.5),
       ),
@@ -305,4 +307,146 @@ void showErrorSnack(BuildContext context, String message) {
     backgroundColor: pasDeDroits ? Colors.orange : AppColors.danger,
     behavior: SnackBarBehavior.floating,
   ));
+}
+
+// ── Pagination moderne ──────────────────────────────────────────────────────
+// 🎯 Widget réutilisable (Invitations, Tickets, et tout autre écran avec une
+// longue liste) : boutons précédent/suivant + numéros de page, avec des
+// points de suspension quand il y a beaucoup de pages. `currentPage` est
+// 0-indexé ; l'affichage utilisateur est en 1-indexé.
+class ModernPagination extends StatelessWidget {
+  final int currentPage;
+  final int totalPages;
+  final ValueChanged<int> onPageChanged;
+  /// Optionnel : "X–Y sur Z résultats", affiché au-dessus des boutons.
+  final String? resultsLabel;
+
+  const ModernPagination({
+    super.key,
+    required this.currentPage,
+    required this.totalPages,
+    required this.onPageChanged,
+    this.resultsLabel,
+  });
+
+  // Fenêtre de pages à afficher : toujours la 1ère, la dernière, la page
+  // courante ± 1, avec des `null` (points de suspension) pour le reste.
+  List<int?> _fenetre() {
+    if (totalPages <= 7) return List.generate(totalPages, (i) => i);
+    final set = <int>{0, totalPages - 1, currentPage};
+    if (currentPage - 1 >= 0) set.add(currentPage - 1);
+    if (currentPage + 1 < totalPages) set.add(currentPage + 1);
+    final sorted = set.toList()..sort();
+    final result = <int?>[];
+    for (var i = 0; i < sorted.length; i++) {
+      if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.add(null);
+      result.add(sorted[i]);
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (totalPages <= 1) return const SizedBox.shrink();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (resultsLabel != null) ...[
+          Text(resultsLabel!, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          const SizedBox(height: 8),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _NavBtn(
+              icon: Icons.chevron_left,
+              enabled: currentPage > 0,
+              onTap: () => onPageChanged(currentPage - 1),
+            ),
+            const SizedBox(width: 4),
+            ..._fenetre().map((p) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: p == null
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text('…', style: TextStyle(color: AppColors.muted)),
+                        )
+                      : _PageBtn(
+                          number: p + 1,
+                          selected: p == currentPage,
+                          onTap: () => onPageChanged(p),
+                        ),
+                )),
+            const SizedBox(width: 4),
+            _NavBtn(
+              icon: Icons.chevron_right,
+              enabled: currentPage < totalPages - 1,
+              onTap: () => onPageChanged(currentPage + 1),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _NavBtn extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+  const _NavBtn({required this.icon, required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(9),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: 34, height: 34,
+          child: Icon(icon, size: 19, color: enabled ? const Color(0xFF1A1A2E) : const Color(0xFFCBD5E1)),
+        ),
+      ),
+    );
+  }
+}
+
+class _PageBtn extends StatelessWidget {
+  final int number;
+  final bool selected;
+  final VoidCallback onTap;
+  const _PageBtn({required this.number, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color.fromARGB(255, 3, 58, 26) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(9),
+        side: BorderSide(color: selected ? const Color.fromARGB(255, 3, 58, 26) : const Color(0xFFE2E8F0)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: selected ? null : onTap,
+        child: SizedBox(
+          width: 34, height: 34,
+          child: Center(
+            child: Text(
+              '$number',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : const Color(0xFF1A1A2E),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

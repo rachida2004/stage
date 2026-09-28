@@ -1,11 +1,10 @@
 package com.bf.dsi.services;
 
 import com.bf.dsi.entity.Invitation;
-import com.bf.dsi.entity.Notification;
+import com.bf.dsi.dto.NotificationEvent;
 import com.bf.dsi.entity.Ticket;
 import com.bf.dsi.entity.Utilisateur;
 import com.bf.dsi.repository.InvitationRepository;
-import com.bf.dsi.repository.NotificationRepository;
 import com.bf.dsi.repository.TicketRepository;
 import com.bf.dsi.repository.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +33,7 @@ public class DelaiAlerteScheduler {
 
     private final InvitationRepository invitationRepo;
     private final TicketRepository ticketRepo;
-    private final NotificationRepository notificationRepo;
+    private final NotificationBroadcastService notifBroadcast;
     private final UtilisateurRepository utilisateurRepo;
     private final AppSettingService appSettingService;
     private final EmailService emailService;
@@ -91,12 +90,11 @@ public class DelaiAlerteScheduler {
             String categorie, String resourceId, String sujetEmail, boolean interneOn, boolean emailOn) {
         for (Utilisateur dest : destinataires) {
             if (interneOn) {
-                notificationRepo.save(Notification.builder()
+                notifBroadcast.envoyer(dest.getUserId(), NotificationEvent.builder()
                     .message(message)
                     .categorie(categorie)
                     .actionLabel("Voir")
                     .resourceId(resourceId)
-                    .utilisateur(dest)
                     .build());
             }
             if (emailOn && dest.getEmail() != null) {

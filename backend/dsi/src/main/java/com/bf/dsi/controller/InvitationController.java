@@ -1,6 +1,7 @@
 package com.bf.dsi.controller;
 
 import com.bf.dsi.dto.InvitationRequest;
+import com.bf.dsi.dto.NotificationEvent;
 import com.bf.dsi.entity.*;
 import com.bf.dsi.enums.*;
 import com.bf.dsi.repository.*;
@@ -10,6 +11,7 @@ import com.bf.dsi.services.PdfService;
 import com.bf.dsi.services.WordService;
 import com.bf.dsi.services.AppSettingService;
 import com.bf.dsi.services.EmailService;
+import com.bf.dsi.services.NotificationBroadcastService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +39,7 @@ public class InvitationController {
     private final WordService wordService;
     private final InvitationService invitationService;
     private final UtilisateurRepository utilisateurRepo;
-    private final NotificationRepository notificationRepo;
+    private final NotificationBroadcastService notifBroadcast;
     private final AppSettingService appSettingService;
     private final EmailService emailService;
 
@@ -62,25 +64,30 @@ public class InvitationController {
         return ResponseEntity.ok(toPageResponse(result));
     }
 
+    // 🎯 CORRECTIF : le filtre modeCreation était inversé par rapport à la
+    // réalité métier — les lettres créées via l'éditeur enrichi (CREER)
+    // sont celles qu'on ENVOIE (courrier officiel sortant), et le
+    // formulaire rapide "Enregistrer" (ENREGISTRER) sert à consigner les
+    // invitations REÇUES d'une autre structure.
     @Operation(summary = "Invitations affichées sur la page REÇU",
-        description = "Retourne les invitations créées via le formulaire 'Créer' (lettre officielle, modeCreation = CREER).")
+        description = "Retourne les invitations enregistrées via le formulaire rapide (invitations reçues d'une autre structure, modeCreation = ENREGISTRER).")
     @GetMapping("/recues")
     public ResponseEntity<?> getInvitationsRecues(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        Page<Invitation> result = invitationRepo.findByModeCreationOrderByIdDesc("CREER", PageRequest.of(page, size));
+        Page<Invitation> result = invitationRepo.findByModeCreationOrderByIdDesc("ENREGISTRER", PageRequest.of(page, size));
         return ResponseEntity.ok(toPageResponse(result));
     }
 
     @Operation(summary = "Invitations affichées sur la page ENVOYER",
-        description = "Retourne les invitations créées via le formulaire rapide 'Enregistrer' (modeCreation = ENREGISTRER).")
+        description = "Retourne les lettres officielles créées via l'éditeur enrichi (courrier envoyé, modeCreation = CREER).")
     @GetMapping("/envoyees")
     public ResponseEntity<?> getInvitationsEnvoyees(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String statut) {
-        Page<Invitation> result = invitationRepo.findByModeCreationOrderByIdDesc("ENREGISTRER", PageRequest.of(page, size));
+        Page<Invitation> result = invitationRepo.findByModeCreationOrderByIdDesc("CREER", PageRequest.of(page, size));
         return ResponseEntity.ok(toPageResponse(result));
     }
 
@@ -321,13 +328,93 @@ public class InvitationController {
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invitation_" + id + ".docx\"").contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document")).body(wordDocument);
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    // 📁 MODULE ARCHIVAGE — lettres officielles (mode "CREER") imprimées et
+    // signées : on y attache la photo/scan du document papier, rattachée à
+    // son numéro de référence (saisi manuellement, format libre du type
+    // NUMERO/ANNEE/MJ/SG/DSI). Recherche par numéro ou par année.
+    // ════════════════════════════════════════════════════════════════════
+
+    @Operation(summary = "Rechercher dans les archives (lettres officielles avec numéro de référence)")
+    @GetMapping("/archives")
+    public List<Map<String, Object>> rechercherArchives(
+            @RequestParam(required = false) String numeroReference,
+            @RequestParam(required = false) String annee) {
+        // 🎯 Filtrage fait ici, en Java simple, plutôt que dans une requête
+        // JPQL avec paramètres potentiellement null (cause de l'erreur 500
+        // précédente). Le volume d'invitations archivables reste modeste,
+        // donc ce filtrage en mémoire n'a aucun impact de performance notable.
+        String numeroFiltre = (numeroReference == null || numeroReference.isBlank())
+            ? null : numeroReference.trim().toLowerCase();
+        String anneeFiltre = (annee == null || annee.isBlank()) ? null : annee.trim();
+
+        return invitationRepo.findByModeCreationAndNumeroReferenceIsNotNullOrderByDateCreationDesc("CREER").stream()
+            .filter(i -> numeroFiltre == null || i.getNumeroReference().toLowerCase().contains(numeroFiltre))
+            .filter(i -> anneeFiltre == null || i.getNumeroReference().contains(anneeFiltre))
+            .map(this::toArchiveDto)
+            .toList();
+    }
+
+    @Operation(summary = "Dernier numéro de référence utilisé — simple rappel, la saisie reste manuelle")
+    @GetMapping("/archives/dernier-numero")
+    public ResponseEntity<?> dernierNumero() {
+        List<String> derniers = invitationRepo.findDerniersNumerosReference(PageRequest.of(0, 1));
+        return ResponseEntity.ok(Map.of("dernierNumero", derniers.isEmpty() ? null : derniers.get(0)));
+    }
+
+    @Operation(summary = "Attacher la photo/scan du document imprimé et signé à une invitation archivée")
+    @PostMapping(value = "/{id}/archiver", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> archiver(
+            @PathVariable Long id,
+            @RequestParam("document") MultipartFile document,
+            @RequestParam(required = false) String dateSignature) {
+        Invitation inv = invitationRepo.findById(id).orElseThrow();
+        if (!"CREER".equalsIgnoreCase(inv.getModeCreation())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "message", "Seules les lettres officielles (mode \"Créer\") peuvent être archivées."));
+        }
+        if (inv.getNumeroReference() == null || inv.getNumeroReference().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "message", "Le numéro de référence doit être renseigné avant d'archiver le document."));
+        }
+        // 🎯 Même dossier de stockage que les autres pièces jointes de cette
+        // invitation (réutilise FileStorageService et /api/files/download/**
+        // sans besoin d'une route de téléchargement dédiée).
+        String chemin = fileStorage.store(document, "invitations/" + id);
+        inv.setCheminDocumentArchive(chemin);
+        inv.setDateArchivage(java.time.LocalDateTime.now());
+        // 🎯 dateSignature = la vraie date écrite/signée sur le courrier
+        // papier (saisie manuelle), distincte de dateArchivage (horodatage
+        // technique de l'import). Facultative : on ne bloque pas l'archivage
+        // si elle n'est pas fournie ou mal formée.
+        if (dateSignature != null && !dateSignature.isBlank()) {
+            try {
+                inv.setDateSignature(LocalDate.parse(dateSignature));
+            } catch (Exception ignored) {
+                // format invalide envoyé : on archive quand même le document, sans bloquer
+            }
+        }
+        invitationRepo.save(inv);
+        return ResponseEntity.ok(toArchiveDto(inv));
+    }
+
+    private Map<String, Object> toArchiveDto(Invitation i) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", i.getId());
+        m.put("numeroReference", i.getNumeroReference());
+        m.put("objet", i.getObjet());
+        m.put("dateCreation", i.getDateCreation());
+        m.put("cheminDocumentArchive", i.getCheminDocumentArchive());
+        m.put("dateArchivage", i.getDateArchivage());
+        m.put("dateSignature", i.getDateSignature());
+        m.put("estArchive", i.getCheminDocumentArchive() != null);
+        return m;
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
-        // 🎯 On purge d'abord les notifications liées à cette invitation
-        // (catégorie "INVITATION", resourceId = id), sinon elles restent
-        // "fantômes" dans les Alertes et pointent vers une ressource qui
-        // n'existe plus. @Transactional est déjà présent au niveau classe.
-        notificationRepo.deleteByCategorieAndResourceId("INVITATION", id.toString());
+        // 🎯 Plus de purge de notifications ici : elles ne sont plus stockées
+        // (poussées en direct via SSE), donc rien à nettoyer en base.
         invitationRepo.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Invitation supprimée"));
     }
@@ -456,10 +543,10 @@ public class InvitationController {
         utilisateurRepo.findByRoles_Nom("SECRETAIRE").forEach(u -> destinatairesEmail.put(u.getUserId(), u));
 
         if (interneOn) {
-            destinatairesInterne.values().forEach(u -> notificationRepo.save(Notification.builder()
+            destinatairesInterne.values().forEach(u -> notifBroadcast.envoyer(u.getUserId(), NotificationEvent.builder()
                 .message("Nouvelle invitation enregistrée : " + inv.getObjet())
                 .categorie("INVITATION").actionLabel("Voir").resourceId(inv.getId().toString())
-                .utilisateur(u).build()));
+                .build()));
         }
 
         if (emailOn) {

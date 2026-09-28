@@ -132,8 +132,13 @@ class AppTheme {
     chipTheme: ChipThemeData(
       backgroundColor: AppColors.surface, // now white
       selectedColor: AppColors.primary,
-      labelStyle: const TextStyle(fontSize: 12, color: Color.fromARGB(255, 219, 219, 230)),//modifier
+      // 🎯 CORRECTIF : l'ancienne couleur (219,219,230 — gris presque blanc)
+      // était quasi invisible sur le fond blanc des chips (ex: "PJ #39"
+      // dans le dialogue "Modifier le ticket"). Remplacée par une couleur
+      // sombre lisible, cohérente avec le reste du texte de l'appli.
+      labelStyle: const TextStyle(fontSize: 12, color: Color.fromARGB(255, 33, 33, 38)),
       secondaryLabelStyle: const TextStyle(fontSize: 12, color: Colors.white),
+      deleteIconColor: const Color.fromARGB(255, 90, 90, 96),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       side: const BorderSide(color: AppColors.border, width: 0.5),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

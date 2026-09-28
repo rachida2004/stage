@@ -82,6 +82,23 @@ public class Invitation {
     @Column(name = "signataire_qualite")
     private String signataireQualite;
 
+    // ── Archivage physique (document imprimé + signé, scanné/photographié) ──
+    // 🎯 Distinct de l'export PDF/Word généré par l'appli : ceci est la trace
+    // du document PAPIER une fois signé, rattachée à son numéro de référence.
+    @Column(name = "chemin_document_archive")
+    private String cheminDocumentArchive;
+
+    // 🎯 Horodatage TECHNIQUE de l'import dans l'application (photo/scan
+    // envoyé) — généré automatiquement, PAS la date écrite sur le courrier.
+    @Column(name = "date_archivage")
+    private LocalDateTime dateArchivage;
+
+    // 🎯 La vraie date manuscrite sur la lettre imprimée et signée, saisie
+    // manuellement par l'utilisateur au moment de l'archivage (peut différer
+    // de dateArchivage si le document n'est numérisé que plus tard).
+    @Column(name = "date_signature")
+    private LocalDate dateSignature;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "structure_emettrice")
     private Structure structureEmettrice;

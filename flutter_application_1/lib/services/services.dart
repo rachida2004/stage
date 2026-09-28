@@ -180,6 +180,50 @@ class InvitationService {
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  // 📁 Module Archivage — lettres officielles (mode "CREER") imprimées et
+  // signées : recherche par numéro/année, et attachement de la photo/scan
+  // du document papier.
+  // ════════════════════════════════════════════════════════════════════
+
+  Future<List<Map<String, dynamic>>> rechercherArchives({String? numeroReference, String? annee}) async {
+    try {
+      final Map<String, dynamic> query = {};
+      if (numeroReference != null && numeroReference.isNotEmpty) query['numeroReference'] = numeroReference;
+      if (annee != null && annee.isNotEmpty) query['annee'] = annee;
+      final res = await _api.dio.get('${ApiConstants.invitations}/archives', queryParameters: query);
+      return (res.data as List).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  /// Dernier numéro de référence utilisé, à titre de simple rappel — la
+  /// saisie du numéro suivant reste manuelle dans le formulaire de création.
+  Future<String?> dernierNumeroReference() async {
+    try {
+      final res = await _api.dio.get('${ApiConstants.invitations}/archives/dernier-numero');
+      return res.data['dernierNumero'] as String?;
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  /// Attache la photo/scan du document imprimé et signé à une invitation
+  /// déjà créée (mode "CREER", numéro de référence déjà renseigné).
+  /// [dateSignature] : la vraie date manuscrite sur le courrier (format
+  /// AAAA-MM-JJ), distincte de la date d'import technique.
+  Future<Map<String, dynamic>> archiverDocument(String id, Uint8List bytes, String filename, {DateTime? dateSignature}) async {
+    try {
+      final payload = <String, dynamic>{
+        'document': MultipartFile.fromBytes(bytes, filename: filename),
+        if (dateSignature != null)
+          'dateSignature': '${dateSignature.year.toString().padLeft(4, '0')}-${dateSignature.month.toString().padLeft(2, '0')}-${dateSignature.day.toString().padLeft(2, '0')}',
+      };
+      final res = await _api.dio.post(
+        '${ApiConstants.invitations}/$id/archiver',
+        data: FormData.fromMap(payload),
+      );
+      return res.data as Map<String, dynamic>;
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
   Future<Invitation> updateStatus(String id, InvitationStatus status) async {
     try {
       return Invitation.fromJson((await _api.dio.patch(
@@ -400,6 +444,18 @@ class AuthService {
     try {
       final res = await _api.dio.get('/api/auth/me');
       return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) { throw ApiException.fromDio(e); }
+  }
+
+  // 🎯 Permet à l'utilisateur de compléter lui-même sa structure/service
+  // (ex: comptes créés avant le correctif, où ces infos n'ont jamais été
+  // enregistrées) — sans devoir passer par un admin à chaque fois.
+  Future<void> mettreAJourMonProfil({int? structureId, int? serviceId}) async {
+    try {
+      await _api.dio.put('/api/auth/me', data: {
+        if (structureId != null) 'structureId': structureId,
+        if (serviceId != null) 'serviceId': serviceId,
+      });
     } on DioException catch (e) { throw ApiException.fromDio(e); }
   }
 

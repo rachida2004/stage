@@ -139,10 +139,17 @@ public class AuthController {
         // 🎯 La structure/service choisis à l'inscription n'étaient jusqu'ici
         // jamais sauvegardés, ce qui empêchait tout préremplissage ultérieur
         // (création de ticket, etc.) puisqu'ils restaient NULL en base.
-        if (req.getStructure() != null && !req.getStructure().isBlank()) {
+        // CORRECTIF : le formulaire envoie structureId/serviceId (IDs), pas
+        // des noms — on cherche donc d'abord par ID, avec repli sur le nom
+        // si jamais un appelant envoie encore structure/service en texte.
+        if (req.getStructureId() != null) {
+            structureRepo.findById(req.getStructureId()).ifPresent(u::setStructure);
+        } else if (req.getStructure() != null && !req.getStructure().isBlank()) {
             structureRepo.findByNom(req.getStructure()).ifPresent(u::setStructure);
         }
-        if (req.getService() != null && !req.getService().isBlank()) {
+        if (req.getServiceId() != null) {
+            serviceRepo.findById(req.getServiceId()).ifPresent(u::setService);
+        } else if (req.getService() != null && !req.getService().isBlank()) {
             serviceRepo.findByNom(req.getService()).ifPresent(u::setService);
         }
         utilisateurRepo.save(u);

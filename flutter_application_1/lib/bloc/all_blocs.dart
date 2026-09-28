@@ -261,7 +261,8 @@ class InvitationBloc extends Bloc<InvitationEvent, InvitationState> {
     on<LoadInvitationsRecues>((event, emit) async {
       emit(InvitationLoading());
       try {
-        // 🎯 Le backend filtre désormais par modeCreation = "CREER"
+        // 🎯 Le backend filtre par modeCreation = "ENREGISTRER" (invitations
+        // reçues d'une autre structure, enregistrées via le formulaire rapide)
         final invitations = await _s.getInvitationsRecues();
         emit(InvitationsLoaded(invitations));
       } catch (e) {

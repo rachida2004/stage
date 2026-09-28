@@ -4,6 +4,7 @@ import 'dart:async';
 import '../bloc/all_blocs.dart';
 import '../theme/app_theme.dart';
 import '../models/models.dart'; 
+import '../services/services.dart';
 import 'dashboard_screen.dart';
 import 'invitations_screen.dart';
 import 'tickets_screen.dart';
@@ -131,13 +132,40 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 const Divider(),
                 const SizedBox(height: 8),
-                // Petite information contextuelle sur la session
-                Row(
-                  children: [
-                    Icon(Icons.domain, size: 18, color: Colors.grey[600]),
-                    const SizedBox(width: 12),
-                    const Text("DSI MESFPT — Burkina Faso", style: TextStyle(fontSize: 13)),
-                  ],
+                // 🎯 CORRECTIF : "DSI MESFPT — Burkina Faso" était codé en
+                // dur, donc identique pour tout le monde. On affiche
+                // maintenant la structure/service réellement renseignés par
+                // l'utilisateur connecté (récupérés depuis son profil), et
+                // le logo de l'appli plutôt qu'une icône générique.
+                FutureBuilder<Map<String, dynamic>>(
+                  future: sl<AuthService>().monProfil(),
+                  builder: (context, snapshot) {
+                    String structureTexte;
+                    if (!snapshot.hasData) {
+                      structureTexte = 'Chargement...';
+                    } else {
+                      final structure = snapshot.data!['structure'] as String?;
+                      final service = snapshot.data!['service'] as String?;
+                      if (structure == null || structure.isEmpty) {
+                        structureTexte = 'Structure non renseignée';
+                      } else if (service != null && service.isNotEmpty) {
+                        structureTexte = '$structure — $service';
+                      } else {
+                        structureTexte = structure;
+                      }
+                    }
+                    return Row(
+                      children: [
+                        ClipOval(
+                          child: Image.asset('assets/images/logo.jpg', width: 20, height: 20, fit: BoxFit.cover),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(structureTexte, style: const TextStyle(fontSize: 13)),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
                 // Bouton Fermer

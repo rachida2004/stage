@@ -66,4 +66,26 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
         ORDER BY i.id DESC
         """)
     List<Invitation> findByStructureInviteeId(@Param("structureId") Long structureId);
+
+    // ── Module Archivage ─────────────────────────────────────────────────
+    // 🎯 L'archivage ne concerne que les lettres officielles (mode "CREER")
+    // ayant un numéro de référence renseigné.
+    // 🎯 CORRECTIF : l'ancienne requête utilisait le motif JPQL
+    // "(:param IS NULL OR ...)" combiné à un CONCAT, qui provoque une erreur
+    // 500 sur certaines versions d'Hibernate quand le paramètre est null
+    // (mauvaise inférence du type du paramètre). On récupère maintenant
+    // simplement TOUTES les invitations archivables via une requête dérivée
+    // basique (aucun risque d'erreur), et le filtrage par numéro/année se
+    // fait en Java, dans InvitationController — voir méthode rechercherArchives().
+    List<Invitation> findByModeCreationAndNumeroReferenceIsNotNullOrderByDateCreationDesc(String modeCreation);
+
+    // 🎯 Dernier numéro de référence utilisé (toutes années confondues,
+    // numérotation continue) — sert de simple RAPPEL à l'écran de création,
+    // la saisie du numéro suivant restant manuelle.
+    @Query("""
+        SELECT i.numeroReference FROM Invitation i
+        WHERE i.modeCreation = 'CREER' AND i.numeroReference IS NOT NULL
+        ORDER BY i.dateCreation DESC
+        """)
+    List<String> findDerniersNumerosReference(Pageable pageable);
 }

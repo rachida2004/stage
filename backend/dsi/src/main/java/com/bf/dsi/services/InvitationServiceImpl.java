@@ -2,11 +2,10 @@ package com.bf.dsi.services;
 
 import com.bf.dsi.entity.AffectationInvitation;
 import com.bf.dsi.entity.Invitation;
-import com.bf.dsi.entity.Notification;
+import com.bf.dsi.dto.NotificationEvent;
 import com.bf.dsi.entity.Utilisateur;
 import com.bf.dsi.repository.AffectationInvitationRepository;
 import com.bf.dsi.repository.InvitationRepository;
-import com.bf.dsi.repository.NotificationRepository;
 import com.bf.dsi.repository.UtilisateurRepository;
 import com.bf.dsi.services.AppSettingService; 
 import lombok.RequiredArgsConstructor;
@@ -24,7 +23,7 @@ public class InvitationServiceImpl implements InvitationService {
     private final InvitationRepository invitationRepo;
     private final AffectationInvitationRepository affectationRepo;
     private final UtilisateurRepository utilisateurRepo;
-    private final NotificationRepository notificationRepo;
+    private final NotificationBroadcastService notifBroadcast;
     private final AppSettingService appSettingService;
     private final EmailService emailService;
 
@@ -68,15 +67,14 @@ public class InvitationServiceImpl implements InvitationService {
 
                 // 🎯 3. Condition : On vérifie si l'admin a coché "Notifications internes"
                 if (appSettingService.isInternalNotificationEnabled()) {
-                    Notification notif = Notification.builder()
+                    NotificationEvent event = NotificationEvent.builder()
                         .message(messageNotif)
                         .categorie("INVITATION")
                         .actionLabel("Voir")
                         .resourceId(invId.toString())
-                        .utilisateur(agent)
                         .build();
-                    
-                    notificationRepo.save(notif);
+
+                    notifBroadcast.envoyer(agent.getUserId(), event);
                 }
 
                 // 🎯 4. Condition : On vérifie si l'admin a coché "Notifications par email"
